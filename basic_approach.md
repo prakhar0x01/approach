@@ -2,11 +2,11 @@
 
 ### 1 - Directory brute-forcing 
 
-         - dirsearch -u $1 -w /path/to/wordlist.txt -x 400,404 -o directories.txt
+         - dirsearch -u abc.target.com -w /path/to/wordlist.txt -x 400,404 -o directories.txt
 
 ### 2 - Crawl that subdomain 
        
-         - waybackurls subdomain.target.com | gau subdomain.target.com | sort -u | httpx -mc 200,301,302 | all_urls.txt  
+         - waybackurls abc.target.com | gau subdomain.target.com | sort -u | httpx -mc 200,301,302 | all_urls.txt  
 
 ### 3 - Filter js files & analyse manually (Personally recommend..!!)
 
@@ -39,7 +39,7 @@
 
 ### 8 - Run nuclei , may be you get low hanging bugs or any CVE
 
-         - nuclei -u abe.target.com
+         - nuclei -u abc.target.com
 
 ### NOTE : 
          - This approach is useful for beginners and those who are having difficulty approaching a target.
