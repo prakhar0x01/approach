@@ -43,4 +43,4 @@
     nuclei -u abc.target.com
 
 ### NOTE : 
-   ####### 8 This approach is useful for beginners and those who are having difficulty approaching a target.
+  ###### This approach is useful for beginners and those who are having difficulty approaching a target.
