@@ -6,7 +6,8 @@ This document outlines a simple approach to test subdomain for beginners. It inc
 
 # 2- Prerequisites
 Before you begin testing, ensure that you have the following:
-1 - Linux
+
+   - Linux
  
 # 3- Tools
 The following tools are recommended for testing [target name]:
