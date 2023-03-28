@@ -16,6 +16,7 @@ The following tools are recommended for testing [target name]:
  - Gau https://github.com/lc/gau
  - httpx https://github.com/projectdiscovery/httpx
  - Nuclei https://github.com/projectdiscovery/nuclei
+ - Gf patterns https://github.com/1ndianl33t/Gf-Patterns 
  - BurpSuite-Pro
 
 # 4- Conclusion
