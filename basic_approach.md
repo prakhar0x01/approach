@@ -6,7 +6,7 @@
 
 ### 2 - Crawl that subdomain 
        
-    waybackurls abc.target.com | gau subdomain.target.com | sort -u | httpx -mc 200,301,302 | all_urls.txt  
+    waybackurls abc.target.com | gau subdomain.target.com | sort -u | httpx -mc 200,301,302 -o all_urls.txt  
 
 ### 3 - Filter js files & analyse manually (Personally recommend..!!)
 
