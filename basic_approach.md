@@ -1,14 +1,14 @@
 # Take a subdomain , what you can do ...
 
-# 1 - Directory brute-forcing 
+### 1 - Directory brute-forcing 
 
          - dirsearch -u $1 -w /path/to/wordlist.txt -x 400,404 -o directories.txt
 
-# 2 - Crawl that subdomain 
+### 2 - Crawl that subdomain 
        
          - waybackurls subdomain.target.com | gau subdomain.target.com | sort -u | httpx -mc 200,301,302 | all_urls.txt  
 
-# 3 - Filter js files & analyse manually (Personally recommend..!!)
+### 3 - Filter js files & analyse manually (Personally recommend..!!)
 
          - grep -E "\.(js)$" all_urls.txt > all_js.txt
 
