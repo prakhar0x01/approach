@@ -31,12 +31,12 @@
 
 ### 7 - You can also audit that subdomain using burp active scan
 
-    Target --> Scope --> add [abc.target.com] --> sitemap --> Right click on abc.target.com --> Actively Scan this host
+    Target --> Scope --> add [abc.target.com] --> sitemap --> Right click on [abc.target.com] --> Actively Scan this host
  
 ### 8 - Do network scan , it might be possible that they run some hidden services (also use nmap script scan).
 
     nmap -Pn -vv <abc.target.com>            // you can also use naabu and other tools
-    nmap -T5 -Pn -vv -A -p port,port,port --script vuln abc.target.com -oN network.txt
+    nmap -T5 -Pn -vv -A -p port1,port2,port3 --script vuln <abc.target.com> -oN network.txt
 
 ### 9 - Run nuclei , may be you get low hanging bugs or any CVE
 
