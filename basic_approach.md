@@ -17,9 +17,11 @@
           grep -E "\.(exe|txt|log|cache|secret|db|backup|yml|json|gz|rar|zip|config|py|sql|bak|old|bkp|ini|sh|rb|cgi|jar|key|ovpn|htpasswd|htaccess|dockerfile)$" all_urls.txt > juicy_files.txt 
 
 
-### 5 - Filter the Endpoints & Check for parameters by gf(by @tomnomnom)
+### 5 - Filter the Endpoints 
 
-          cat all_urls.txt | sed "s/=[^&]*/=/" | all_endpoints.txt
+          cat all_urls.txt | sed "s/=[^&]*/=/" > all_endpoints.txt
+
+### 6 - Check for parameters by gf(by @tomnomnom)
 
           cat all_endpoints.txt | gf xss > xss_endpoints.txt
           cat all_endpoints.txt | gf ssrf > ssrf_endpoints.txt
@@ -27,17 +29,16 @@
           cat all_endpoints.txt | gf idors > idors_endpoints.txt
           cat all_endpoints.txt | gf lfi > lfi_endpoints.txt
 
+### 7 - You can also audit that subdomain using burp active scan
 
-### 6 - You can also audit that subdomain using burp active scan
-
-          add to scope ---> Active Scan 
+          Target --> Scope --> add [abc.target.com] --> sitemap --> Right click on abc.target.com --> Actively Scan this host
  
-### 7 - Do network scan , it might be possible that they run some hidden services (also use nmap script scan).
+### 8 - Do network scan , it might be possible that they run some hidden services (also use nmap script scan).
 
           nmap -Pn -vv <abc.target.com>            // you can also use naabu and other tools
           nmap -T5 -Pn -vv -A -p port,port,port --script vuln abc.target.com -oN network.txt
 
-### 8 - Run nuclei , may be you get low hanging bugs or any CVE
+### 9 - Run nuclei , may be you get low hanging bugs or any CVE
 
           nuclei -u abc.target.com
 
