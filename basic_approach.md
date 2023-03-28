@@ -1,0 +1,45 @@
+# Take a subdomain , what you can do ...
+
+# 1 - Directory brute-forcing 
+
+         - dirsearch -u $1 -w /path/to/wordlist.txt -x 400,404 -o directories.txt
+
+# 2 - Crawl that subdomain 
+       
+         - waybackurls subdomain.target.com | gau subdomain.target.com | sort -u | httpx -mc 200,301,302 | all_urls.txt  
+
+# 3 - Filter js files & analyse manually (Personally recommend..!!)
+
+         - grep -E "\.(js)$" all_urls.txt > all_js.txt
+
+# 4 - Look for other juicy files
+
+         - grep -E "\.(exe|txt|log|cache|secret|db|backup|yml|json|gz|rar|zip|config|py|sql|bak|old|bkp|ini|sh|rb|cgi|jar|key|ovpn|htpasswd|htaccess|dockerfile)$" all_urls.txt > juicy_files.txt 
+
+
+# 5 - Filter the Endpoints & Check for parameters by gf(by @tomnomnom)
+
+         - cat all_urls.txt | sed "s/=[^&]*/=/" | all_endpoints.txt
+
+         - cat all_endpoints.txt | gf xss > xss_endpoints.txt
+         - cat all_endpoints.txt | gf ssrf > ssrf_endpoints.txt
+         - cat all_endpoints.txt | gf sqli > sqli_endpoints.txt
+         - cat all_endpoints.txt | gf idors > idors_endpoints.txt
+         - cat all_endpoints.txt | gf lfi > lfi_endpoints.txt
+
+
+# 6 - You can also audit that subdomain using burp active scan
+
+         - add to scope ---> Active Scan 
+ 
+# 7 - Do network scan , it might be possible that they run some hidden services (also use nmap script scan).
+
+         - nmap -Pn -vv <abc.target.com>            // you can also use naabu and other tools
+         - nmap -T5 -Pn -vv -A -p port,port,port --script vuln abc.target.com -oN network.txt
+
+# 8 - Run nuclei , may be you get low hanging bugs or any CVE
+
+         - nuclei -u abe.target.com
+
+# NOTE : 
+         - This approach is useful for beginners and those who are having difficulty approaching a target.
