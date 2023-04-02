@@ -6,7 +6,7 @@
 
 ### 2 - Crawl that subdomain 
        
-    waybackurls abc.target.com | gau subdomain.target.com | sort -u | httpx -mc 200,301,302 -o all_urls.txt  
+    waybackurls subdomain.target.com | gau subdomain.target.com | sort -u | httpx -mc 200,301,302 -o all_urls.txt  
 
 ### 3 - Filter js files & analyse manually (Personally recommend..!!)
 
@@ -43,4 +43,4 @@
     nuclei -u abc.target.com
 
 ### NOTE : 
-  ###### This approach is useful for beginners and those who are having difficulty approaching a target.
+  ###### This approach is useful for beginners and those who are having difficulty approaching a target. If you're already on track this might not be necessary for you..!!
