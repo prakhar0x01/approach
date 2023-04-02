@@ -1,7 +1,7 @@
 
 # Testing Approach for subdomain
 
-### Are you facing problems on how to approach a subdomain for teesting , here is your simple approach to elevate your security game ..!!
+### Are you facing problems on how to approach a subdomain for testing , here is your simple approach to elevate your security game ..!!
 
 # 1- Overview
 This document outlines a simple approach to test a subdomain for beginners. Ir also includes recommended tools and resources.
