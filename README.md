@@ -1,13 +1,15 @@
 
 # Testing Approach for subdomain
 
+### Are you facing problems on how to approach a subdomain for teesting , here is your simple approach to elevate your security game ..!!
+
 # 1- Overview
-This document outlines a simple approach to test subdomain for beginners. It includes steps to set up and execute tests, as well as recommended tools and resources.
+This document outlines a simple approach to test a subdomain for beginners. Ir also includes recommended tools and resources.
 
 # 2- Prerequisites
 Before you begin testing, ensure that you have the following:
 
-- Linux
+- Any OS - Linux, windows ..etc
  
 # 3- Tools
 The following tools are recommended for testing [target name]:
@@ -17,7 +19,7 @@ The following tools are recommended for testing [target name]:
  - httpx https://github.com/projectdiscovery/httpx
  - Nuclei https://github.com/projectdiscovery/nuclei
  - Gf patterns https://github.com/1ndianl33t/Gf-Patterns 
- - BurpSuite-Pro
+ - BurpSuite : https://portswigger.net/burp
 
 # 4- Conclusion
 This basic approach provides a guide for beginners to approach a target for security vulnerabilities. However, you should continue to expand your knowledge and experience with different testing techniques and tools.
