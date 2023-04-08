@@ -43,8 +43,8 @@
     nuclei -u abc.target.com
 ### 10 - Try google dorks and github dorks.
 
-   Quick Google Dorks : https://twitter.com/TakSec/status/1640072219777978375
-   Quick Github Dorks : https://github.com/techgaun/github-dorks/blob/master/github-dorks.txt
+   ##### Quick Google Dorks : https://twitter.com/TakSec/status/1640072219777978375
+   ##### Quick Github Dorks : https://github.com/techgaun/github-dorks/blob/master/github-dorks.txt
 
 
 ### NOTE : 
