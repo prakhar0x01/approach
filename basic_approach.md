@@ -41,6 +41,11 @@
 ### 9 - Run nuclei , may be you get low hanging bugs or any CVE
 
     nuclei -u abc.target.com
+### 10 - Try google dorks and github dorks.
+
+   Quick Google Dorks : https://twitter.com/TakSec/status/1640072219777978375
+   Quick Github Dorks : https://github.com/techgaun/github-dorks/blob/master/github-dorks.txt
+
 
 ### NOTE : 
   ###### This approach is useful for beginners and those who are having difficulty approaching a target. If you're already on track this might not be necessary for you..!!
