@@ -43,9 +43,27 @@
     nuclei -u abc.target.com
 ### 10 - Try google dorks and github dorks.
 
-   ##### Quick Google Dorks : https://twitter.com/TakSec/status/1640072219777978375
-   ##### Quick Github Dorks : https://github.com/techgaun/github-dorks/blob/master/github-dorks.txt
+    ##### Quick Google Dorks : https://twitter.com/TakSec/status/1640072219777978375
+    ##### Quick Github Dorks : https://github.com/techgaun/github-dorks/blob/master/github-dorks.txt
 
+### 11 - If you found some path that show 403,401 then spend some time with it & try to bypass it.
+
+    - Bypass by adding headers: X-Originating-IP, X-Forwarded-For, X-Client-IP..etc
+    ###### you can also use this automated tool : https://github.com/Dheerajmadhukar/4-ZERO-3
+   
+    - Bypass with payload : 1 - /login/..;/admin
+                           2 - /..;/admin
+                           3 - /admin/~
+                           4 - /./admin/./
+                           5 - /admin?parameter
+                           6 - /%2e/admin
+                           7 - /admin# 
+ 
+    - Bypass by changing HTTP methods : Change GET to POST, observe application behaviour
+    - Bypass via IP : Access the target forbidden content by it's IP. 
+      
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 ### NOTE : 
   ###### This approach is useful for beginners and those who are having difficulty approaching a target. If you're already on track this might not be necessary for you..!!
