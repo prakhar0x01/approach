@@ -23,8 +23,8 @@ The following tools are recommended for approaching a subdomain:
 
 ### 4 - approach.sh (https://github.com/PrakharPorwal1/approach/blob/main/approach.sh)
  - An Automated Script written in (python & bash), 
-###### NOTE : This script should advised for ONLY SMALL SCOPE TARGETS, if you've large wild scope target don't use this script, it will take days to resolve all the permuted hosts.
-###### NOTE : You have to configure some part in `approach.sh` such as path to your wordlists and filenames, This Script is just a reference of Automation not a Recon Tool.
+##### NOTE : This script should advised for ONLY SMALL SCOPE TARGETS, if you've large wild scope target don't use this script, it will take days to resolve all the permuted hosts.
+##### NOTE : You have to configure some part in `approach.sh` such as path to your wordlists and filenames, This Script is just a reference of Automation not a Recon Tool.
 
 ### 5 - Permutations.txt
  - Wordlists for Permutations Bruteforcing.
