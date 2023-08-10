@@ -84,7 +84,7 @@ for word in $(cat prefix.txt | sort -u); do
     done
 done
 
-#if [ $(cat permuted.txt | wc -l) -lt 25000 ]; then
+#if [ $(cat permuted.txt | wc -l) -lt 25000 ]; then 
 echo ""
 echo -e "\e[31m[+]\e[32m $(date +["%T"]) \e[35m[PROMPT] \e[33m There are $(cat permuted.txt | wc -l) subdomains to resolve.It will take longer..!!  \e[0m"
 echo ""
