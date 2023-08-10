@@ -61,9 +61,10 @@
  
     - Bypass by changing HTTP methods : Change GET to POST, observe application behaviour
     - Bypass via IP : Access the target forbidden content by it's IP. 
+    - Check urls in WebArchive for that particular subdomain , may be you get any hidden endpoint. `https://web.archive.org/cdx/search/cdx?url=*.target.com&fl=original&collapse=urlkey`
       
 
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 ### NOTE : 
-  #### This approach is useful for beginners and those who are having difficulty approaching a target. If you're already on track this might not be necessary for you..!!
+  #### This approach is useful for beginners and those who are having difficulty approaching a subdomain. If you're already on track this might not be necessary for you..!!
