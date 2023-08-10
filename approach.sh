@@ -39,16 +39,7 @@ echo -e "\e[31m[+]\e[32m $(date +["%T"]) \e[33m[OK] \e[36m Started Subdomain Dis
 echo "-----------------------------------------------------------------------------------------------"
 echo ""
 amass enum -active -passive -d $1 -o subdomains.txt
-
-# Add words to the Domain
-echo ""
-echo "-----------------------------------------------------------------------------------------------"
-echo -e "\e[31m[+]\e[32m $(date +["%T"]) \e[33m[OK] \e[36m Adding more Possible Subdomains \e[0m"
-echo "-----------------------------------------------------------------------------------------------"
-echo ""
-while read -r word; do
-  echo "$word.$1" >> subdomains.txt
-done < /path/to/subdomains.txt
+subfinder -d $1 -silent | tee -a subdomains.txt
 
 # Combine and filter uniques
 echo ""
@@ -77,6 +68,7 @@ done < livehosts.txt
 
 cat /path/to/permutations.txt >> prefix.txt
 
+# you can also include `echo "$word$nest.$1" >> permuted.txt`
 for word in $(cat prefix.txt | sort -u); do
     for nest in $(cat prefix.txt | sort -u); do
          echo "$word.$nest.$1" >> permuted.txt
@@ -85,6 +77,7 @@ for word in $(cat prefix.txt | sort -u); do
 done
 
 #if [ $(cat permuted.txt | wc -l) -lt 25000 ]; then 
+# Rsolver using python, to resolve all the permuted list of subdomains
 echo ""
 echo -e "\e[31m[+]\e[32m $(date +["%T"]) \e[35m[PROMPT] \e[33m There are $(cat permuted.txt | wc -l) subdomains to resolve.It will take longer..!!  \e[0m"
 echo ""
@@ -126,7 +119,7 @@ print("\n\033[1;32m[STATUS] [INFO] Resolved hosts saved into : \033[1;31mresolve
 END
 fi
 
-# Port Scanning using Naabu
+# Port Scanning using Naabu, You can also use Nmap
 echo ""
 echo "-----------------------------------------------------------------------------------------------"
 echo -e "\e[31m[+]\e[32m $(date +["%T"]) \e[33m[OK] \e[36m Port Scanning \e[0m"
@@ -134,7 +127,7 @@ echo "--------------------------------------------------------------------------
 echo ""
 cat livehosts.txt | cut -d'[' -f1 | cut -d'/' -f3 | naabu -l livehosts.txt -p 21,139,443,445,1099,2082,2083,3000,4243,5000,8443,8000,8080,8081,8089,8084,8088,8888,9090,9443,10000 -o naabu.txt
 
-# Filtering IP ranges for 403,401 and running nuclei scan
+# Nuclei Scan on 403,401 and IPs, It is recommneded to use Templates according to your target do not blindly fire it all.
 echo ""
 echo "-----------------------------------------------------------------------------------------------"
 echo -e "\e[31m[+]\e[32m $(date +["%T"]) \e[33m[INFO] \e[36m Filter 403,401 IP ranges and going for Nuclei Scan \e[0m"
@@ -149,5 +142,5 @@ if [ $(cat forbidden_ips.txt | wc -l) -lt 30 ]; then
     echo -e "\e[31m[+]\e[32m $(date +["%T"]) \e[33m[OK] \e[36m Starting Nuclei on $(cat forbidden_ips.txt | wc -l) Forbidden/Unauthorize Hosts \e[0m"
     echo "==============================================================================================="
     echo ""
-   nuclei -l forbidden_ips.txt
+   nuclei -l forbidden_ips.txt -t /path/to/your/nucleitemplate
 fi
