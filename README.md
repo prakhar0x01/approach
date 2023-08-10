@@ -21,5 +21,12 @@ The following tools are recommended for approaching a subdomain:
  - Gf patterns https://github.com/1ndianl33t/Gf-Patterns 
  - BurpSuite : https://portswigger.net/burp
 
+### 4 - approach.sh (https://github.com/PrakharPorwal1/approach/blob/main/approach.sh)
+ - An Automated Script written in (python & bash), 
+###### NOTE : This script should advised for ONLY SMALL SCOPE TARGETS, if you've large wild scope target don't use this script, it will take days to resolve all the permuted hosts.
+
+### 5 - Permutations.txt
+ - Wordlists for Permutations Bruteforcing.
+
 ### 4- Conclusion
 This basic approach provides a guide for beginners to approach a subdomain for security vulnerabilities. However, you should continue to expand your knowledge and experience with different testing techniques and tools.
