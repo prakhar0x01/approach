@@ -60,7 +60,9 @@
                            7 - /admin# 
  
     - Bypass by changing HTTP methods : Change GET to POST, observe application behaviour
+
     - Bypass via IP : Access the target forbidden content by it's IP. 
+
     - Check urls in WebArchive for that particular subdomain , may be you get any hidden endpoint. 
 `https://web.archive.org/cdx/search/cdx?url=*.target.com&fl=original&collapse=urlkey`
       
