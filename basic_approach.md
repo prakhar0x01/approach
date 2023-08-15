@@ -6,7 +6,7 @@
 
 ### 2 - Crawl that subdomain 
        
-    waybackurls subdomain.target.com | gau subdomain.target.com | sort -u | httpx -mc 200,301,302 -o all_urls.txt  
+    waybackurls abc.target.com | gau abc.target.com | sort -u | httpx -mc 200,301,302 -o all_urls.txt  
 
 ### 3 - Filter js files & analyse manually (Personally recommend..!!)
 
@@ -46,12 +46,13 @@
     Quick Google Dorks : https://twitter.com/TakSec/status/1640072219777978375
     Quick Github Dorks : https://github.com/techgaun/github-dorks/blob/master/github-dorks.txt
 
-### 11 - If you found some path that show 403,401 then spend some time with it & try to bypass it.
+### 11 - If you found some `/path` that show 403,401 then spend some time with it & try to bypass it.
 
-    - Bypass by adding headers: X-Originating-IP, X-Forwarded-For, X-Client-IP..etc
-    you can also use this automated tool : https://github.com/Dheerajmadhukar/4-ZERO-3
+    1) Bypass by adding headers: X-Originating-IP, X-Forwarded-For, X-Client-IP..etc
+    you can also use this automated tool : 
+   `https://github.com/Dheerajmadhukar/4-ZERO-3`
    
-    - Bypass with payload : 1 - /login/..;/admin
+    2) Bypass with payload : 1 - /login/..;/admin
                            2 - /..;/admin
                            3 - /admin/~
                            4 - /./admin/./
@@ -59,13 +60,27 @@
                            6 - /%2e/admin
                            7 - /admin# 
  
-    - Bypass by changing HTTP methods : Change GET to POST, observe application behaviour
+    3) Bypass by changing HTTP methods : Change `GET` to `POST`, observe application behaviour
 
-    - Bypass via IP : Access the target forbidden content by it's IP. 
+    4) Bypass via IP : Access the target forbidden content by it's IP. 
 
-    - Check urls in WebArchive for that particular subdomain , may be you get any hidden endpoint. 
-`https://web.archive.org/cdx/search/cdx?url=*.target.com&fl=original&collapse=urlkey`
+    5) Check urls in WebArchive for that particular subdomain, may be you get any hidden endpoint. 
       
+### 12 - Do not leave 401,403 subdomains..!!
+    1) Check urls in WebArchive for that particular subdomain, may be you get any hidden endpoint. 
+   `https://web.archive.org/cdx/search/cdx?url=*.target.com&fl=original&collapse=urlkey`
+    
+    2) Visit that subdomain by IP, may be you will able to bypass WAF(Web-appliction-firewall)
+    
+    3) Try Content discovery according to technology.
+    
+    4) Try to fuzz hidden API endpoints.
+    
+    5) Port Scan for : 
+   `21,139,443,445,1099,2082,2083,3000,4243,5000,8443,8000,8080,8081,8089,8084,8088,8888,9090,9443,10000`
+
+    6) Do subdomain discovery for that subdomain : 
+   `subfinder -d abc.target.com -silent | httpx -silent`
 
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
