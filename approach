@@ -1,0 +1,148 @@
+#!/bin/bash
+
+path='/mnt/d/prakhar/hacking/tools/wordlists/quick/'
+
+subdomain_enum(){
+    printf "\n" && echo -e "\e[32mSubdomain Enumeration Started at $target, This may take sometime...\e[0m"
+    printf "\n" && echo "𝙴𝚗𝚞𝚖𝚎𝚛𝚊𝚝𝚒𝚗𝚐 𝚞𝚜𝚒𝚗𝚐 𝚊𝚖𝚊𝚜𝚜..."
+    amass enum -passive -d $target | tee -a subdomains.txt >/dev/null
+    printf "\n" && echo "𝙴𝚗𝚞𝚖𝚎𝚛𝚊𝚝𝚒𝚗𝚐 𝚞𝚜𝚒𝚗𝚐 𝚂𝚞𝚋𝚏𝚒𝚗𝚍𝚎𝚛..."
+    subfinder -d $target -silent | tee -a subdomains.txt >/dev/null
+    printf "\n" && echo "𝙴𝚗𝚞𝚖𝚎𝚛𝚊𝚝𝚒𝚗𝚐 𝚞𝚜𝚒𝚗𝚐 𝚌𝚛𝚝.𝚜𝚑..."
+    curl -s https://crt.sh/\?q\=%25.$target\&output\=json | jq -r .[].name_value | sed 's/\*\.//g' | sort -u | tee -a subdomains.txt >/dev/null
+    cat subdomains.txt | sort -u > hosts.txt
+    printf "\n" && echo "𝙵𝚒𝚕𝚝𝚎𝚛𝚒𝚗𝚐 𝙻𝚒𝚟𝚎 𝚂𝚞𝚋𝚍𝚘𝚖𝚊𝚒𝚗𝚜..."
+    cat hosts.txt | httpx -silent -sc -title | tee -a livedomains.txt >/dev/null && rm subdomains.txt
+    echo "" && echo "𝙳𝚘𝚗𝚎..." && printf "\n"
+}
+
+dir_bruteforce(){
+    printf "\n"
+    echo -e "\e[32mDirectory Bruteforcing Started at $target\e[0m"
+    dirsearch -u $target -w /mnt/d/prakhar/hacking/tools/wordlists/quick/quick.txt -x 400,404
+    echo "" && echo "𝙳𝚘𝚗𝚎..." && printf "\n"
+}
+
+port_scan(){
+    printf "\n" && echo -e "\e[32mPort Scanning Started at $target\e[0m"
+    nmap -Pn -vv -p 21,80,139,443,445,1099,2082,2083,3000,4243,5000,8443,8000,8080,8081,8089,8084,8088,8888,9090,9443,10000 $target | grep -E 'open|closed'
+    echo "" && echo "𝙳𝚘𝚗𝚎..." && printf "\n"
+}
+
+# Just a Python Resolver
+resolve_subdomains(){
+    echo -e "\e[32mResolving Subdomains (Finding IPs)...\e[0m"
+    python3 - <<END
+import socket
+import time
+import os
+
+        # Resolving DNS
+def resolve_dns(hostname):
+    try:
+        ip_address = socket.gethostbyname(hostname)
+        return ip_address
+    except socket.gaierror as e:
+        return None
+
+
+filename = "hosts.txt"
+if os.path.exists(filename):
+    print("Well all good..!!\n")
+else:
+    print("Oops..!!, {filename} does not Exists..!!\n")
+    quit()
+output_filename = "ips.txt"
+
+with open(filename, 'r') as file,open(output_filename, 'w') as output:
+    print("\n\033[1;32m [STATUS] 𝚂𝚝𝚊𝚛𝚝𝚎𝚍 𝚁𝚎𝚜𝚘𝚕𝚟𝚒𝚗𝚐 𝚊𝚝 : \033[0m",time.strftime("%Y-%m-%d %H:%M:%S"))
+    iteration = 0
+
+    for subdomain in file:
+        iteration = iteration+1
+        subdomain = subdomain.strip()
+        ip_address = resolve_dns(subdomain)
+
+        if(ip_address != None):
+            print(f"\033[1;31m {subdomain} \033[0m :: \033[1;32m {ip_address} \033[0m")
+            output.write(f"{subdomain} : {ip_address}\n")
+
+        if(iteration % 500 == 0):
+            print(f"\033[1;34m\n[STATUS] TOTAL {iteration} subdomains Resolved\033[0m")
+
+
+print("\n\033[1;32m[STATUS] 𝚂𝚞𝚌𝚌𝚎𝚜𝚜𝚏𝚞𝚕𝚕𝚢 𝚁𝚎𝚜𝚘𝚕𝚟𝚎𝚍 𝚊𝚝 :: \033[0m",time.strftime("%Y-%m-%d %H:%M:%S"))
+print("\n\033[1;32m[STATUS] 𝚁𝚎𝚜𝚘𝚕𝚟𝚎𝚍 𝚑𝚘𝚜𝚝𝚜 𝚜𝚊𝚟𝚎𝚍 𝚒𝚗𝚝𝚘 : \033[1;31mresolvers.txt\033[0m\n\n")
+END
+}
+
+fresh_up(){
+    printf "\n" && echo -e "\e[32m𝚄𝚙𝚍𝚊𝚝𝚒𝚗𝚐 𝚜𝚢𝚜𝚝𝚎𝚖...\e[0m"
+    apt update && apt upgrade -y && apt clean
+    echo "" && echo "𝙳𝚘𝚗𝚎..." && printf "\n"
+}
+
+
+#Banner
+printf "\n\n\n"
+printf "\t █████╗ ██████╗ ██████╗ ██████╗  ██████╗  █████╗  ██████╗██╗  ██╗\n"
+printf "\t██╔══██╗██╔══██╗██╔══██╗██╔══██╗██╔═══██╗██╔══██╗██╔════╝██║  ██║\n"
+printf "\t███████║██████╔╝██████╔╝██████╔╝██║   ██║███████║██║     ███████║\n"
+printf "\t██╔══██║██╔═══╝ ██╔═══╝ ██╔══██╗██║   ██║██╔══██║██║     ██╔══██║\n"
+printf "\t██║  ██║██║     ██║     ██║  ██║╚██████╔╝██║  ██║╚██████╗██║  ██║\n"
+printf "\t╚═╝  ╚═╝╚═╝     ╚═╝     ╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝\n"
+echo -e "                                       By ~ \e[32mGhost💀 aka Prakhar Porwal\e[0m" && echo ""
+
+
+
+# Other Tasks functions
+
+if [ $# -lt 2 ]; then
+    echo "" && echo -e "        Usage: \e[33m$0 [options] <target>\e[0m"
+    printf "\tOptions:\n"
+    printf "\t  -sb     Subdomain Enumeration\n"
+    printf "\t  -D      Normal Directory Bruteforcing\n"
+    printf "\t  -ps     Port Scanning\n"
+    printf "\t  -r      Resolving subdomains\n"
+    printf "\t  -fresh  Fresh-up Everything\n\n"
+    exit 1
+fi
+
+
+target="${@: -1}"  # Get the last argument as the target
+
+# Parse flags and options
+flags=()
+
+for arg in "${@:1:$#-1}"; do
+    case $arg in
+        -sb|-D|-ps|-r|-fresh|-h)
+            flags+=("$arg")
+            ;;
+        *)
+            usage
+            exit 1
+            ;;
+    esac
+done
+
+# Handle the parsed flags and options
+for flag in "${flags[@]}"; do
+    case $flag in
+        -sb)
+            subdomain_enum
+            ;;
+        -D)
+            dir_bruteforce
+            ;;
+        -ps)
+            port_scan
+            ;;
+        -r)
+            resolve_subdomains
+            ;;
+        -fresh)
+            fresh_up
+            ;;
+    esac
+done
