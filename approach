@@ -1,37 +1,110 @@
 #!/bin/bash
 
-path='/mnt/d/prakhar/hacking/tools/wordlists/quick/'
+# find `/path/to/` and change it to your wordlist path.
 
+# Remove `>/dev/null` from each command, if you want to see the output.
+# I don't spend much time on subdomain discovery, but if you want to increase your attack surface then you can add it here.
 subdomain_enum(){
-    printf "\n" && echo -e "\e[32mSubdomain Enumeration Started at $target, This may take sometime...\e[0m"
-    printf "\n" && echo "𝙴𝚗𝚞𝚖𝚎𝚛𝚊𝚝𝚒𝚗𝚐 𝚞𝚜𝚒𝚗𝚐 𝚊𝚖𝚊𝚜𝚜..."
+    printf "\n" && echo -e "\e[1;32m[ - ] [INFO] Subdomain Enumeration Started at \e[1;31m$target\e[0m, \e[1;32mThis may take sometime...\e[0m"
+    printf "\n" && echo "[ + ] 𝙴𝚗𝚞𝚖𝚎𝚛𝚊𝚝𝚒𝚗𝚐 𝚞𝚜𝚒𝚗𝚐 𝚊𝚖𝚊𝚜𝚜..."
     amass enum -passive -d $target | tee -a subdomains.txt >/dev/null
-    printf "\n" && echo "𝙴𝚗𝚞𝚖𝚎𝚛𝚊𝚝𝚒𝚗𝚐 𝚞𝚜𝚒𝚗𝚐 𝚂𝚞𝚋𝚏𝚒𝚗𝚍𝚎𝚛..."
+    echo "[ + ] 𝙴𝚗𝚞𝚖𝚎𝚛𝚊𝚝𝚒𝚗𝚐 𝚞𝚜𝚒𝚗𝚐 𝚂𝚞𝚋𝚏𝚒𝚗𝚍𝚎𝚛..."
     subfinder -d $target -silent | tee -a subdomains.txt >/dev/null
-    printf "\n" && echo "𝙴𝚗𝚞𝚖𝚎𝚛𝚊𝚝𝚒𝚗𝚐 𝚞𝚜𝚒𝚗𝚐 𝚌𝚛𝚝.𝚜𝚑..."
+    echo "[ + ] 𝙴𝚗𝚞𝚖𝚎𝚛𝚊𝚝𝚒𝚗𝚐 𝚞𝚜𝚒𝚗𝚐 𝚌𝚛𝚝.𝚜𝚑..."
     curl -s https://crt.sh/\?q\=%25.$target\&output\=json | jq -r .[].name_value | sed 's/\*\.//g' | sort -u | tee -a subdomains.txt >/dev/null
-    cat subdomains.txt | sort -u > hosts.txt
-    printf "\n" && echo "𝙵𝚒𝚕𝚝𝚎𝚛𝚒𝚗𝚐 𝙻𝚒𝚟𝚎 𝚂𝚞𝚋𝚍𝚘𝚖𝚊𝚒𝚗𝚜..."
-    cat hosts.txt | httpx -silent -sc -title | tee -a livedomains.txt >/dev/null && rm subdomains.txt
-    echo "" && echo "𝙳𝚘𝚗𝚎..." && printf "\n"
+    cat subdomains.txt | sort -u > $target-hosts.txt
+    echo "[ + ] 𝙵𝚒𝚕𝚝𝚎𝚛𝚒𝚗𝚐 𝙻𝚒𝚟𝚎 𝚂𝚞𝚋𝚍𝚘𝚖𝚊𝚒𝚗𝚜..."
+    cat $target-hosts.txt | httpx -silent -sc -title | tee -a livedomains.txt >/dev/null && rm subdomains.txt && printf "\n"
+    echo "[ + ] [INFO] 𝙳𝚘𝚗𝚎..." && printf "\n"
+#    cat *-hosts.txt > all.txt >/dev/null
 }
 
 dir_bruteforce(){
     printf "\n"
-    echo -e "\e[32mDirectory Bruteforcing Started at $target\e[0m"
-    dirsearch -u $target -w /mnt/d/prakhar/hacking/tools/wordlists/quick/quick.txt -x 400,404
-    echo "" && echo "𝙳𝚘𝚗𝚎..." && printf "\n"
+    echo -e "\e[1;32m[ - ] [INFO] Directory Bruteforcing Started at \e[1;31m$target\e[0m"
+    dirsearch -u $target -w /path/to/your/goto/wordlist.txt -x 404 -q
+    echo "" && echo "[ - ] [INFO] 𝙳𝚘𝚗𝚎..." && printf "\n" && rm -rf reports/
 }
 
+# I added this function to identify the Login/Signup feature on subdomains.
+check(){
+    filename=$target
+    echo -e "\e[1;32m[ - ] [INFO] Started Checking subdomains for Login/Signup Process from\e[1;31m $target..."
+
+    python3 - <<END
+import os
+import requests
+import re
+from concurrent.futures import ThreadPoolExecutor
+#import sys
+
+
+with open('check.txt', 'r') as file:
+    subdomains = [line.strip() for line in file]
+
+def process_subdomain(subdomain):
+    try:
+        response = requests.get(subdomain, timeout=10)
+
+        if response.status_code == 200 or response.status_code == 301 or response.status_code == 302:
+            source_code = response.text
+
+            # Use regex to find URLs in 'href' attributes
+            urls = re.findall(r'href=[\'"]?([^\'" >]+)', source_code)
+
+            for url in urls:
+                if re.search(r'login|sign|register|account', url, re.IGNORECASE):
+                    print(f"\033[1;31m[{response.status_code}]\t\033[92m{subdomain}\t  \033[1;36m -> {url}\033[0m")
+
+    except Exception as e:
+        pass
+
+# Set the maximum number of threads to control concurrency
+max_threads = 10
+
+# Use ThreadPoolExecutor to run checks concurrently
+with ThreadPoolExecutor(max_threads) as executor:
+    executor.map(process_subdomain, subdomains)
+
+END
+
+}
+
+# Normal Port scan using nmap on popular ports, I use nmap b/c of accuracy you can use any other tool or your custom tool if you want.
 port_scan(){
-    printf "\n" && echo -e "\e[32mPort Scanning Started at $target\e[0m"
+    printf "\n" && echo -e "\e[1;32m[ - ] [INFO] Port Scanning Started at \e[1;31m$target\e[0m"
     nmap -Pn -vv -p 21,80,139,443,445,1099,2082,2083,3000,4243,5000,8443,8000,8080,8081,8089,8084,8088,8888,9090,9443,10000 $target | grep -E 'open|closed'
-    echo "" && echo "𝙳𝚘𝚗𝚎..." && printf "\n"
+    echo "" && echo "[-] [INFO] 𝙳𝚘𝚗𝚎..." && printf "\n"
 }
 
-# Just a Python Resolver
+# This function is used to find javascript files and then perform basic scanning for sensitive exposures(nuclei). 
+javascript(){
+    printf "\n" && echo -e "\e[1;32m[ - ] [INFO] Started Scanning JavaScript files at \e[1;31m$target\e[0m, \e[1;32mThis may take sometimes..."
+    # Create a directory to store downloaded files
+    mkdir -p js_files
+
+    # Crawl the subdomain and save the HTML content
+    domain=$(echo $target | awk -F[/:] '{print $1}'); touch "js-${domain//./_}.txt"
+    wget -q -r -A js --no-parent --directory-prefix=js_files http://$target
+
+    # Find all JS file URLs and save them to js_files.txt
+    find js_files -type f -name "*.js" -printf "%P\n" >> "js-${domain//./_}.txt"
+
+    # Clean up: remove the js_files directory
+    rm -rf js_files
+
+    printf "\n" && echo -e "\e[1;32m[ - ] [INFO] JavaScript files saved in \e[1;31mjs-${domain//./_}.txt\e[0m" && printf "\n"
+
+    nuclei -l "js-${domain//./_}.txt" -t /path/to/nuclei-templates/http/exposures/ -silent
+
+}
+
+
+# I created a Python Resolver to resolve multiple hosts at once. If you know how to chain this script with permutation brute-forcing, you're unique.  
+# Always save your permuted subdomains file as --> permuted.txt
+# Also, use this script wisely, If you don't use your brain while using this script, you are simply wasting your time.
 resolve_subdomains(){
-    echo -e "\e[32mResolving Subdomains (Finding IPs)...\e[0m"
+    printf "\n" && echo -e "\e[1;32m[ - ] [INFO] Started Resolving Subdomains...\e[0m"
     python3 - <<END
 import socket
 import time
@@ -46,13 +119,13 @@ def resolve_dns(hostname):
         return None
 
 
-filename = "hosts.txt"
+filename = "permuted.txt"
 if os.path.exists(filename):
-    print("Well all good..!!\n")
+    print("    [ + ] Well all good..!!\n")
 else:
-    print("Oops..!!, {filename} does not Exists..!!\n")
+    print("    [ + ] Oops..!!, {filename} does not Exists..!!\n")
     quit()
-output_filename = "ips.txt"
+output_filename = "resolvers.txt"
 
 with open(filename, 'r') as file,open(output_filename, 'w') as output:
     print("\n\033[1;32m [STATUS] 𝚂𝚝𝚊𝚛𝚝𝚎𝚍 𝚁𝚎𝚜𝚘𝚕𝚟𝚒𝚗𝚐 𝚊𝚝 : \033[0m",time.strftime("%Y-%m-%d %H:%M:%S"))
@@ -74,16 +147,22 @@ with open(filename, 'r') as file,open(output_filename, 'w') as output:
 print("\n\033[1;32m[STATUS] 𝚂𝚞𝚌𝚌𝚎𝚜𝚜𝚏𝚞𝚕𝚕𝚢 𝚁𝚎𝚜𝚘𝚕𝚟𝚎𝚍 𝚊𝚝 :: \033[0m",time.strftime("%Y-%m-%d %H:%M:%S"))
 print("\n\033[1;32m[STATUS] 𝚁𝚎𝚜𝚘𝚕𝚟𝚎𝚍 𝚑𝚘𝚜𝚝𝚜 𝚜𝚊𝚟𝚎𝚍 𝚒𝚗𝚝𝚘 : \033[1;31mresolvers.txt\033[0m\n\n")
 END
+
+if [ $(cat resolvers.txt | wc -l) -lt 1 ]; then
+    rm resolvers.txt
+fi
 }
 
+# I just made this script to automate day-to-day tasks, you can use this when updating your wordlist, updating the system & software..etc
 fresh_up(){
-    printf "\n" && echo -e "\e[32m𝚄𝚙𝚍𝚊𝚝𝚒𝚗𝚐 𝚜𝚢𝚜𝚝𝚎𝚖...\e[0m"
+    printf "\n" && echo -e "\e[1;32m[ - ] [INFO] 𝚄𝚙𝚍𝚊𝚝𝚒𝚗𝚐 𝚜𝚢𝚜𝚝𝚎𝚖...\e[0m"
     apt update && apt upgrade -y && apt clean
     echo "" && echo "𝙳𝚘𝚗𝚎..." && printf "\n"
 }
 
 
-#Banner
+# A cool script is incomplete without a cool banner. you can simply remove the below `#` and ignore the banner.
+#<<comment
 printf "\n\n\n"
 printf "\t █████╗ ██████╗ ██████╗ ██████╗  ██████╗  █████╗  ██████╗██╗  ██╗\n"
 printf "\t██╔══██╗██╔══██╗██╔══██╗██╔══██╗██╔═══██╗██╔══██╗██╔════╝██║  ██║\n"
@@ -91,20 +170,21 @@ printf "\t███████║██████╔╝██████╔�
 printf "\t██╔══██║██╔═══╝ ██╔═══╝ ██╔══██╗██║   ██║██╔══██║██║     ██╔══██║\n"
 printf "\t██║  ██║██║     ██║     ██║  ██║╚██████╔╝██║  ██║╚██████╗██║  ██║\n"
 printf "\t╚═╝  ╚═╝╚═╝     ╚═╝     ╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝\n"
-echo -e "                                       By ~ \e[32mGhost💀 aka Prakhar Porwal\e[0m" && echo ""
+echo -e "                                       By ~ \e[32mBy ~ Prakhar0x01 💀\e[0m" && echo ""
+#comment
 
 
-
-# Other Tasks functions
-
+# Tasks functions with some fancy description.
 if [ $# -lt 2 ]; then
-    echo "" && echo -e "        Usage: \e[33m$0 [options] <target>\e[0m"
+    echo "" && echo -e "        Usage: \e[33mapproach [options] <target>\e[0m"
     printf "\tOptions:\n"
-    printf "\t  -sb     Subdomain Enumeration\n"
-    printf "\t  -D      Normal Directory Bruteforcing\n"
-    printf "\t  -ps     Port Scanning\n"
-    printf "\t  -r      Resolving subdomains\n"
-    printf "\t  -fresh  Fresh-up Everything\n\n"
+    echo -e "\t🔎  -sb     Subdomain Enumeration"
+    echo -e "\t📁  -D      Quick Content Discovery"
+    echo -e "\t🚪  -ps     Quick Port Scanning"
+    echo -e "\t🌍  -r      Hosts Resolution"
+    echo -e "\t🔄  -fresh  Total Revamp"
+    echo -e "\t🚀  -js     Slaughter JS-files for Secrets"
+    echo -e "\t🔍  -check  Investigate manual testing approach\n\n"
     exit 1
 fi
 
@@ -116,7 +196,7 @@ flags=()
 
 for arg in "${@:1:$#-1}"; do
     case $arg in
-        -sb|-D|-ps|-r|-fresh|-h)
+        -sb|-D|-ps|-r|-fresh|-h|-js|-check)
             flags+=("$arg")
             ;;
         *)
@@ -144,5 +224,15 @@ for flag in "${flags[@]}"; do
         -fresh)
             fresh_up
             ;;
+        -js)
+            javascript
+            ;;
+        -check)
+            check
+            ;;
     esac
 done
+
+# PLEASE READ THIS
+# Hey, I know if you're reading this you're probably reviewing this whole script.
+# I just wanna say that "DON'T use this script as other automation tools", make sure you add some extra unique features.
