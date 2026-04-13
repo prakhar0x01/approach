@@ -1,238 +1,1350 @@
 #!/bin/bash
 
-# find `/path/to/` and change it to your wordlist path.
+# ============================================================
+#   APPROACH — Elite Recon Framework v3.0
+#   Original by Prakhar0x01
+#   "Don't use this as other automation tools.
+#    Add unique features. Use your brain."
+# ============================================================
 
-# Remove `>/dev/null` from each command, if you want to see the output.
-# I don't spend much time on subdomain discovery, but if you want to increase your attack surface then you can add it here.
-subdomain_enum(){
-    printf "\n" && echo -e "\e[1;32m[ - ] [INFO] Subdomain Enumeration Started at \e[1;31m$target\e[0m, \e[1;32mThis may take sometime...\e[0m"
-    printf "\n" && echo "[ + ] 𝙴𝚗𝚞𝚖𝚎𝚛𝚊𝚝𝚒𝚗𝚐 𝚞𝚜𝚒𝚗𝚐 𝚊𝚖𝚊𝚜𝚜..."
-    amass enum -passive -d $target | tee -a subdomains.txt >/dev/null
-    echo "[ + ] 𝙴𝚗𝚞𝚖𝚎𝚛𝚊𝚝𝚒𝚗𝚐 𝚞𝚜𝚒𝚗𝚐 𝚂𝚞𝚋𝚏𝚒𝚗𝚍𝚎𝚛..."
-    subfinder -d $target -silent | tee -a subdomains.txt >/dev/null
-    echo "[ + ] 𝙴𝚗𝚞𝚖𝚎𝚛𝚊𝚝𝚒𝚗𝚐 𝚞𝚜𝚒𝚗𝚐 𝚌𝚛𝚝.𝚜𝚑..."
-    curl -s https://crt.sh/\?q\=%25.$target\&output\=json | jq -r .[].name_value | sed 's/\*\.//g' | sort -u | tee -a subdomains.txt >/dev/null
-    cat subdomains.txt | sort -u > $target-hosts.txt
-    echo "[ + ] 𝙵𝚒𝚕𝚝𝚎𝚛𝚒𝚗𝚐 𝙻𝚒𝚟𝚎 𝚂𝚞𝚋𝚍𝚘𝚖𝚊𝚒𝚗𝚜..."
-    cat $target-hosts.txt | httpx -silent -sc -title | tee -a livedomains.txt >/dev/null && rm subdomains.txt && printf "\n"
-    echo "[ + ] [INFO] 𝙳𝚘𝚗𝚎..." && printf "\n"
-#    cat *-hosts.txt > all.txt >/dev/null
+# ─── CONFIG ──────────────────────────────────────────────────
+WORDLIST="/path/to/your/wordlist.txt"
+API_WORDLIST="/path/to/api_wordlist.txt"
+NUCLEI_TEMPLATES="/path/to/nuclei-templates"
+RESOLVERS="/path/to/resolvers.txt"
+THREADS=50
+RATE_LIMIT=100
+OUTPUT_DIR="./recon-${target}-$(date +%Y%m%d-%H%M%S)"
+
+# Optional API keys — leave blank to skip that feature
+SHODAN_API_KEY=""
+ANTHROPIC_API_KEY=""
+NOTIFY_DISCORD_WEBHOOK=""
+GITHUB_TOKEN=""
+# ─────────────────────────────────────────────────────────────
+
+RED='\033[1;31m'; GRN='\033[1;32m'; YLW='\033[1;33m'
+CYN='\033[1;36m'; PRP='\033[1;35m'; RST='\033[0m'
+
+info()    { echo -e "${GRN}[INFO]${RST} $1"; }
+warn()    { echo -e "${YLW}[WARN]${RST} $1"; }
+alert()   { echo -e "${RED}[ALERT]${RST} $1"; }
+success() { echo -e "${CYN}[DONE]${RST} $1\n"; }
+step()    { echo -e "${PRP}[ + ]${RST} $1"; }
+
+notify(){
+    local msg="$1"
+    [ -z "$NOTIFY_DISCORD_WEBHOOK" ] && return
+    curl -s -X POST "$NOTIFY_DISCORD_WEBHOOK" \
+        -H "Content-Type: application/json" \
+        -d "{\"content\": \"🚨 **[$target]** $msg\"}" >/dev/null 2>&1
 }
 
-dir_bruteforce(){
-    printf "\n"
-    echo -e "\e[1;32m[ - ] [INFO] Directory Bruteforcing Started at \e[1;31m$target\e[0m"
-    dirsearch -u $target -w /path/to/your/goto/wordlist.txt -x 404 -q
-    echo "" && echo "[ - ] [INFO] 𝙳𝚘𝚗𝚎..." && printf "\n" && rm -rf reports/
+require(){ command -v "$1" &>/dev/null || { warn "$1 not found, skipping."; return 1; }; return 0; }
+
+setup_output(){
+    mkdir -p "$OUTPUT_DIR"/{subdomains,urls,js,ports,params,vulns,cloud,dns,waf,cors,patterns,report}
+    info "Output directory: $OUTPUT_DIR"
+    echo "Recon started: $(date)" > "$OUTPUT_DIR/report/summary.md"
+    echo "Target: $target" >> "$OUTPUT_DIR/report/summary.md"
 }
 
-# I added this function to identify the Login/Signup feature on subdomains.
-check(){
-    filename=$target
-    echo -e "\e[1;32m[ - ] [INFO] Started Checking subdomains for Login/Signup Process from\e[1;31m $target..."
-
-    python3 - <<END
-import os
-import requests
-import re
-from concurrent.futures import ThreadPoolExecutor
-#import sys
-
-
-with open('check.txt', 'r') as file:
-    subdomains = [line.strip() for line in file]
-
-def process_subdomain(subdomain):
-    try:
-        response = requests.get(subdomain, timeout=10)
-
-        if response.status_code == 200 or response.status_code == 301 or response.status_code == 302:
-            source_code = response.text
-
-            # Use regex to find URLs in 'href' attributes
-            urls = re.findall(r'href=[\'"]?([^\'" >]+)', source_code)
-
-            for url in urls:
-                if re.search(r'login|sign|register|account', url, re.IGNORECASE):
-                    print(f"\033[1;31m[{response.status_code}]\t\033[92m{subdomain}\t  \033[1;36m -> {url}\033[0m")
-
-    except Exception as e:
-        pass
-
-# Set the maximum number of threads to control concurrency
-max_threads = 10
-
-# Use ThreadPoolExecutor to run checks concurrently
-with ThreadPoolExecutor(max_threads) as executor:
-    executor.map(process_subdomain, subdomains)
-
-END
-
-}
-
-# Normal Port scan using nmap on popular ports, I use nmap b/c of accuracy you can use any other tool or your custom tool if you want.
-port_scan(){
-    printf "\n" && echo -e "\e[1;32m[ - ] [INFO] Port Scanning Started at \e[1;31m$target\e[0m"
-    nmap -Pn -vv -p 21,80,139,443,445,1099,2082,2083,3000,4243,5000,8443,8000,8080,8081,8089,8084,8088,8888,9090,9443,10000 $target | grep -E 'open|closed'
-    echo "" && echo "[-] [INFO] 𝙳𝚘𝚗𝚎..." && printf "\n"
-}
-
-# This function is used to find javascript files and then perform basic scanning for sensitive exposures(nuclei). 
-javascript(){
-    printf "\n" && echo -e "\e[1;32m[ - ] [INFO] Started Scanning JavaScript files at \e[1;31m$target\e[0m, \e[1;32mThis may take sometimes..."
-    # Create a directory to store downloaded files
-    mkdir -p js_files
-
-    # Crawl the subdomain and save the HTML content
-    domain=$(echo $target | awk -F[/:] '{print $1}'); touch "js-${domain//./_}.txt"
-    wget -q -r -A js --no-parent --directory-prefix=js_files http://$target
-
-    # Find all JS file URLs and save them to js_files.txt
-    find js_files -type f -name "*.js" -printf "%P\n" >> "js-${domain//./_}.txt"
-
-    # Clean up: remove the js_files directory
-    rm -rf js_files
-
-    printf "\n" && echo -e "\e[1;32m[ - ] [INFO] JavaScript files saved in \e[1;31mjs-${domain//./_}.txt\e[0m" && printf "\n"
-
-    nuclei -l "js-${domain//./_}.txt" -t /path/to/nuclei-templates/http/exposures/ -silent
-
-}
-
-
-# I created a Python Resolver to resolve multiple hosts at once. If you know how to chain this script with permutation brute-forcing, you're unique.  
-# Always save your permuted subdomains file as --> permuted.txt
-# Also, use this script wisely, If you don't use your brain while using this script, you are simply wasting your time.
-resolve_subdomains(){
-    printf "\n" && echo -e "\e[1;32m[ - ] [INFO] Started Resolving Subdomains...\e[0m"
-    python3 - <<END
-import socket
-import time
-import os
-
-        # Resolving DNS
-def resolve_dns(hostname):
-    try:
-        ip_address = socket.gethostbyname(hostname)
-        return ip_address
-    except socket.gaierror as e:
-        return None
-
-
-filename = "permuted.txt"
-if os.path.exists(filename):
-    print("    [ + ] Well all good..!!\n")
-else:
-    print("    [ + ] Oops..!!, {filename} does not Exists..!!\n")
-    quit()
-output_filename = "resolvers.txt"
-
-with open(filename, 'r') as file,open(output_filename, 'w') as output:
-    print("\n\033[1;32m [STATUS] 𝚂𝚝𝚊𝚛𝚝𝚎𝚍 𝚁𝚎𝚜𝚘𝚕𝚟𝚒𝚗𝚐 𝚊𝚝 : \033[0m",time.strftime("%Y-%m-%d %H:%M:%S"))
-    iteration = 0
-
-    for subdomain in file:
-        iteration = iteration+1
-        subdomain = subdomain.strip()
-        ip_address = resolve_dns(subdomain)
-
-        if(ip_address != None):
-            print(f"\033[1;31m {subdomain} \033[0m :: \033[1;32m {ip_address} \033[0m")
-            output.write(f"{subdomain} : {ip_address}\n")
-
-        if(iteration % 500 == 0):
-            print(f"\033[1;34m\n[STATUS] TOTAL {iteration} subdomains Resolved\033[0m")
-
-
-print("\n\033[1;32m[STATUS] 𝚂𝚞𝚌𝚌𝚎𝚜𝚜𝚏𝚞𝚕𝚕𝚢 𝚁𝚎𝚜𝚘𝚕𝚟𝚎𝚍 𝚊𝚝 :: \033[0m",time.strftime("%Y-%m-%d %H:%M:%S"))
-print("\n\033[1;32m[STATUS] 𝚁𝚎𝚜𝚘𝚕𝚟𝚎𝚍 𝚑𝚘𝚜𝚝𝚜 𝚜𝚊𝚟𝚎𝚍 𝚒𝚗𝚝𝚘 : \033[1;31mresolvers.txt\033[0m\n\n")
-END
-
-if [ $(cat resolvers.txt | wc -l) -lt 1 ]; then
-    rm resolvers.txt
-fi
-}
-
-# I just made this script to automate day-to-day tasks, you can use this when updating your wordlist, updating the system & software..etc
-fresh_up(){
-    printf "\n" && echo -e "\e[1;32m[ - ] [INFO] 𝚄𝚙𝚍𝚊𝚝𝚒𝚗𝚐 𝚜𝚢𝚜𝚝𝚎𝚖...\e[0m"
-    apt update && apt upgrade -y && apt clean
-    echo "" && echo "𝙳𝚘𝚗𝚎..." && printf "\n"
-}
-
-
-# A cool script is incomplete without a cool banner. you can simply remove the below `#` and ignore the banner.
-#<<comment
-printf "\n\n\n"
+banner(){
+printf "\n\n"
 printf "\t █████╗ ██████╗ ██████╗ ██████╗  ██████╗  █████╗  ██████╗██╗  ██╗\n"
 printf "\t██╔══██╗██╔══██╗██╔══██╗██╔══██╗██╔═══██╗██╔══██╗██╔════╝██║  ██║\n"
 printf "\t███████║██████╔╝██████╔╝██████╔╝██║   ██║███████║██║     ███████║\n"
 printf "\t██╔══██║██╔═══╝ ██╔═══╝ ██╔══██╗██║   ██║██╔══██║██║     ██╔══██║\n"
 printf "\t██║  ██║██║     ██║     ██║  ██║╚██████╔╝██║  ██║╚██████╗██║  ██║\n"
 printf "\t╚═╝  ╚═╝╚═╝     ╚═╝     ╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝\n"
-echo -e "                                       By ~ \e[32mBy ~ Prakhar0x01 💀\e[0m" && echo ""
-#comment
+echo -e "                     By ~ ${GRN}Prakhar0x01 💀 | v3.0 Elite Edition${RST}\n"
+}
 
 
-# Tasks functions with some fancy description.
+# ════════════════════════════════════════════════════════════
+#  1. ASN & IP RANGE DISCOVERY
+#  Edge case: companies own IP ranges that never appear in DNS.
+#  Internal tools, staging infra, forgotten apps live there.
+# ════════════════════════════════════════════════════════════
+asn_enum(){
+    printf "\n" && info "ASN & IP Range Discovery for ${RED}$target${RST}"
+    local OUT="$OUTPUT_DIR/subdomains"
+    local base="${target%%.*}"
+
+    step "Querying BGPView for ASN..."
+    curl -s "https://api.bgpview.io/search?query=$base" \
+        | jq -r '.data.asns[]? | "\(.asn) \(.name) \(.description)"' 2>/dev/null \
+        > "$OUT/asns.txt"
+
+    if [ -s "$OUT/asns.txt" ]; then
+        cat "$OUT/asns.txt"
+        while IFS=' ' read -r asn rest; do
+            step "Fetching IP ranges for AS$asn..."
+            curl -s "https://api.bgpview.io/asn/$asn/prefixes" \
+                | jq -r '.data.ipv4_prefixes[]?.prefix' 2>/dev/null \
+                >> "$OUT/ip_ranges.txt"
+        done < "$OUT/asns.txt"
+        sort -u "$OUT/ip_ranges.txt" -o "$OUT/ip_ranges.txt"
+        local ranges=$(wc -l < "$OUT/ip_ranges.txt")
+        step "Total IP ranges owned by org: $ranges"
+        alert "These ranges may contain infra that never shows up in DNS!"
+    fi
+
+    step "Reverse IP lookup (co-hosted domain discovery)..."
+    local main_ip
+    main_ip=$(dig +short "$target" A | head -1)
+    if [ -n "$main_ip" ]; then
+        curl -s "https://api.hackertarget.com/reverseiplookup/?q=$main_ip" \
+            > "$OUT/reverse_ip_hosts.txt" 2>/dev/null
+        local cohosted=$(wc -l < "$OUT/reverse_ip_hosts.txt")
+        step "Co-hosted domains on same IP: $cohosted → $OUT/reverse_ip_hosts.txt"
+    fi
+
+    success "ASN enum done."
+}
+
+
+# ════════════════════════════════════════════════════════════
+#  2. REVERSE WHOIS — FIND SIBLING DOMAINS
+#  Edge case: M&A targets, sister companies, same registrant.
+#  Same codebase, far less scrutiny.
+# ════════════════════════════════════════════════════════════
+reverse_whois(){
+    printf "\n" && info "Reverse WHOIS for ${RED}$target${RST}"
+    local OUT="$OUTPUT_DIR/subdomains"
+
+    step "Querying ViewDNS reverse WHOIS..."
+    curl -s "https://viewdns.info/reversewhois/?q=${target}" \
+        | grep -oP '(?<=<td>)[a-zA-Z0-9\-\.]+\.[a-zA-Z]{2,}(?=</td>)' \
+        | sort -u > "$OUT/reverse_whois.txt" 2>/dev/null
+
+    local found=$(wc -l < "$OUT/reverse_whois.txt" 2>/dev/null || echo 0)
+    [ "$found" -gt 0 ] && {
+        alert "Related domains via reverse WHOIS: $found"
+        cat "$OUT/reverse_whois.txt"
+        alert "These sibling domains often share infra and codebases — test them too!"
+    }
+
+    success "Reverse WHOIS done."
+}
+
+
+# ════════════════════════════════════════════════════════════
+#  3. SUBDOMAIN ENUMERATION (7 SOURCES, PARALLEL)
+# ════════════════════════════════════════════════════════════
+subdomain_enum(){
+    printf "\n" && info "Subdomain Enumeration at ${RED}$target${RST}"
+    local OUT="$OUTPUT_DIR/subdomains"
+
+    step "Running all sources in parallel..."
+    require amass    && amass enum -passive -d "$target" -o "$OUT/amass.txt" 2>/dev/null &
+    require subfinder && subfinder -d "$target" -all -recursive -silent -o "$OUT/subfinder.txt" 2>/dev/null &
+    require assetfinder && assetfinder --subs-only "$target" > "$OUT/assetfinder.txt" 2>/dev/null &
+    require findomain && findomain -t "$target" -u "$OUT/findomain.txt" 2>/dev/null &
+    require chaos    && chaos -d "$target" -o "$OUT/chaos.txt" -silent 2>/dev/null &
+
+    curl -s "https://crt.sh/?q=%25.$target&output=json" \
+        | jq -r '.[].name_value' 2>/dev/null \
+        | sed 's/\*\.//g' | sort -u > "$OUT/crtsh.txt" &
+
+    curl -s "https://rapiddns.io/subdomain/$target?full=1" \
+        | grep -oP "(?<=<td>)[a-zA-Z0-9\-\.]+\.$target(?=</td>)" \
+        | sort -u > "$OUT/rapiddns.txt" 2>/dev/null &
+
+    curl -s "https://otx.alienvault.com/api/v1/indicators/domain/$target/passive_dns" \
+        | jq -r '.passive_dns[]?.hostname' 2>/dev/null \
+        | sort -u > "$OUT/otx.txt" 2>/dev/null &
+
+    wait
+
+    cat "$OUT"/*.txt 2>/dev/null | sort -u > "$OUT/all_subs_raw.txt"
+    local total=$(wc -l < "$OUT/all_subs_raw.txt")
+    step "Total unique raw subdomains: $total"
+
+    step "Resolving with puredns (wildcard-aware)..."
+    require puredns && puredns resolve "$OUT/all_subs_raw.txt" \
+        --resolvers "$RESOLVERS" -w "$OUT/resolved.txt" 2>/dev/null
+
+    step "Wildcard DNS check (false positive trap)..."
+    local wildcard
+    wildcard=$(dig +short "$(openssl rand -hex 8).$target" A 2>/dev/null)
+    [ -n "$wildcard" ] && warn "Wildcard DNS detected ($wildcard) — passive results need careful verification!"
+
+    step "HTTP probing live hosts..."
+    require httpx && httpx -l "$OUT/resolved.txt" \
+        -title -tech-detect -status-code -content-length -ip -cdn \
+        -ports 80,443,8080,8443,8888,3000,4000,5000,9000 \
+        -threads "$THREADS" -silent \
+        -o "$OUT/live_hosts.txt" 2>/dev/null
+
+    local live=$(wc -l < "$OUT/live_hosts.txt")
+    success "Raw: $total | Live: $live → $OUT/live_hosts.txt"
+}
+
+
+# ════════════════════════════════════════════════════════════
+#  4. PERMUTATION-BASED SUBDOMAIN DISCOVERY
+#  Edge case: dev.target.com, api-v2.target.com, us-prod.target.com
+#  Never appear in passive enumeration. This finds them.
+# ════════════════════════════════════════════════════════════
+permutation_enum(){
+    printf "\n" && info "Permutation Subdomain Discovery for ${RED}$target${RST}"
+    local OUT="$OUTPUT_DIR/subdomains"
+    local RESOLVED="$OUT/resolved.txt"
+
+    [ ! -f "$RESOLVED" ] && warn "Run -sb first." && return 1
+
+    step "Generating permutations with alterx..."
+    if require alterx; then
+        cat "$RESOLVED" | alterx -en \
+            -pp "word=dev,api,api-v2,api-v3,staging,prod,internal,admin,test,uat,qa,beta,alpha,sandbox,vault,git,ci,cd,jenkins,grafana,kibana,elastic,db,mysql,redis,mongo,s3,backup,old,legacy,new,shop,mobile,app,portal,dashboard,manager,control,panel,status,health,metrics,us,eu,aws,gcp,corp,vpn,mail,smtp,ftp,secure,login,auth" \
+            -o "$OUT/permuted.txt" 2>/dev/null
+        local pcount=$(wc -l < "$OUT/permuted.txt")
+        step "Generated $pcount permutations"
+    fi
+
+    require goaltdns && goaltdns -l "$RESOLVED" \
+        -w /path/to/goaltdns_wordlist.txt \
+        -o "$OUT/goaltdns.txt" 2>/dev/null
+    cat "$OUT/goaltdns.txt" >> "$OUT/permuted.txt" 2>/dev/null
+    sort -u "$OUT/permuted.txt" -o "$OUT/permuted.txt"
+
+    step "Resolving permutations..."
+    require puredns && puredns resolve "$OUT/permuted.txt" \
+        --resolvers "$RESOLVERS" -w "$OUT/permuted_resolved.txt" 2>/dev/null
+
+    step "Finding NET-NEW subdomains (not in original passive enum)..."
+    if [ -f "$OUT/permuted_resolved.txt" ] && [ -f "$RESOLVED" ]; then
+        comm -23 \
+            <(sort "$OUT/permuted_resolved.txt") \
+            <(sort "$RESOLVED") \
+            > "$OUT/permuted_new_only.txt"
+        local newcount=$(wc -l < "$OUT/permuted_new_only.txt")
+        [ "$newcount" -gt 0 ] && {
+            alert "Found $newcount NEW subdomains via permutation that passive enum missed!"
+            notify "Permutation found $newcount new subdomains not in passive enum!"
+        }
+    fi
+
+    success "Permutation done."
+}
+
+
+# ════════════════════════════════════════════════════════════
+#  5. DNS DEEP ANALYSIS
+#  Edge case: zone transfers, SPF misconfigs, DMARC absence,
+#  dangling CNAMEs, wildcard detection.
+# ════════════════════════════════════════════════════════════
+dns_analysis(){
+    printf "\n" && info "DNS Deep Analysis for ${RED}$target${RST}"
+    local OUT="$OUTPUT_DIR/dns"
+
+    step "Full DNS record dump..."
+    for rtype in A AAAA CNAME MX NS TXT SOA CAA; do
+        echo "--- $rtype ---" >> "$OUT/dns_records.txt"
+        dig +short "$target" "$rtype" 2>/dev/null >> "$OUT/dns_records.txt"
+    done
+
+    step "DNS Zone Transfer (AXFR) attempts on all nameservers..."
+    dig +short NS "$target" 2>/dev/null | while IFS= read -r ns; do
+        [ -z "$ns" ] && continue
+        result=$(dig AXFR "@$ns" "$target" 2>/dev/null)
+        if echo "$result" | grep -qv "Transfer failed\|connection timed out\|communications error"; then
+            if echo "$result" | grep -q "SOA"; then
+                alert "ZONE TRANSFER SUCCEEDED on $ns — critical finding!"
+                echo "$result" > "$OUT/zone_transfer_${ns}.txt"
+                notify "CRITICAL: Zone transfer succeeded on $ns for $target!"
+            fi
+        else
+            step "AXFR failed on $ns (expected)"
+        fi
+    done
+
+    step "SPF record check..."
+    local spf
+    spf=$(dig +short TXT "$target" 2>/dev/null | grep "v=spf1")
+    if [ -z "$spf" ]; then
+        alert "No SPF record — email spoofing possible!"
+        echo "NO_SPF" >> "$OUT/email_issues.txt"
+        notify "No SPF on $target — email spoofing risk!"
+    else
+        echo "SPF: $spf" >> "$OUT/email_security.txt"
+        echo "$spf" | grep -q "+all" && alert "SPF uses +all — anyone can send as this domain!"
+        echo "$spf" | grep -q "~all" && warn "SPF uses ~all (softfail) — weak protection."
+    fi
+
+    step "DMARC check..."
+    local dmarc
+    dmarc=$(dig +short TXT "_dmarc.$target" 2>/dev/null)
+    if [ -z "$dmarc" ]; then
+        alert "No DMARC record — phishing/spoofing risk!"
+        echo "NO_DMARC" >> "$OUT/email_issues.txt"
+    else
+        echo "DMARC: $dmarc" >> "$OUT/email_security.txt"
+        echo "$dmarc" | grep -q "p=none" && warn "DMARC policy=none — monitoring only, not enforcing!"
+    fi
+
+    step "DKIM check (common selectors)..."
+    for selector in default google mail dkim smtp selector1 selector2 k1 s1 s2; do
+        local dkim
+        dkim=$(dig +short TXT "${selector}._domainkey.$target" 2>/dev/null)
+        [ -n "$dkim" ] && echo "DKIM ($selector): $dkim" >> "$OUT/email_security.txt"
+    done
+
+    step "Dangling CNAME check (takeover signals)..."
+    if [ -f "$OUTPUT_DIR/subdomains/resolved.txt" ]; then
+        dnsx -l "$OUTPUT_DIR/subdomains/resolved.txt" \
+            -cname -resp -silent 2>/dev/null \
+            | grep -iE "github\.io|heroku|shopify|azure|s3\.amazonaws|cloudfront|fastly|pantheon|netlify|surge\.sh|readme\.io|statuspage\.io|uservoice\.com|ghost\.io|intercom\.io" \
+            > "$OUT/dangling_cnames.txt" 2>/dev/null
+        local tkos=$(wc -l < "$OUT/dangling_cnames.txt" 2>/dev/null || echo 0)
+        [ "$tkos" -gt 0 ] && {
+            alert "Dangling CNAME takeover candidates: $tkos"
+            notify "Dangling CNAMEs found — potential takeovers: $tkos"
+        }
+    fi
+
+    success "DNS analysis done. Check $OUT/"
+}
+
+
+# ════════════════════════════════════════════════════════════
+#  6. WAF & TECH FINGERPRINTING
+#  Edge case: knowing the WAF before attacking saves hours.
+#  Favicon hash lets you find OTHER instances of the same
+#  app on Shodan — including unprotected ones.
+# ════════════════════════════════════════════════════════════
+waf_detect(){
+    printf "\n" && info "WAF & Technology Fingerprint for ${RED}$target${RST}"
+    local OUT="$OUTPUT_DIR/waf"
+
+    step "WAF detection with wafw00f..."
+    require wafw00f && wafw00f "https://$target" -a -o "$OUT/wafw00f.txt" 2>/dev/null
+    grep -i "is behind" "$OUT/wafw00f.txt" 2>/dev/null && alert "WAF detected — check WAF-bypass payloads!"
+
+    step "Security header analysis..."
+    curl -s -I "https://$target" 2>/dev/null > "$OUT/headers.txt"
+    local missing_headers=()
+    for header in "Strict-Transport-Security" "Content-Security-Policy" \
+                  "X-Frame-Options" "X-Content-Type-Options" \
+                  "Referrer-Policy" "Permissions-Policy"; do
+        grep -qi "$header" "$OUT/headers.txt" || missing_headers+=("$header")
+    done
+    [ ${#missing_headers[@]} -gt 0 ] && {
+        warn "Missing security headers: ${missing_headers[*]}"
+        printf "%s\n" "${missing_headers[@]}" > "$OUT/missing_headers.txt"
+    }
+
+    step "Favicon hash (for Shodan search)..."
+    python3 - <<PYEOF 2>/dev/null > "$OUT/favicon.txt"
+import requests, base64, sys
+try:
+    import mmh3
+except ImportError:
+    sys.exit(0)
+try:
+    r = requests.get("https://$target/favicon.ico", timeout=8, verify=False)
+    if r.status_code == 200:
+        h = mmh3.hash(base64.encodebytes(r.content))
+        print(f"Favicon mmh3 hash: {h}")
+        print(f"Shodan dork: http.favicon.hash:{h}")
+        print("Use this on Shodan to find other instances of this app — including unprotected ones!")
+except: pass
+PYEOF
+    [ -s "$OUT/favicon.txt" ] && cat "$OUT/favicon.txt"
+
+    step "Full tech fingerprint with whatweb..."
+    require whatweb && whatweb "https://$target" \
+        --log-json="$OUT/whatweb.json" 2>/dev/null
+
+    success "WAF/tech done. Check $OUT/"
+}
+
+
+# ════════════════════════════════════════════════════════════
+#  7. PORT SCANNING (ELITE — ALL OWNED IPs)
+# ════════════════════════════════════════════════════════════
+port_scan(){
+    printf "\n" && info "Port Scanning for ${RED}$target${RST}"
+    local OUT="$OUTPUT_DIR/ports"
+
+    step "Collecting all unique IPs (subdomains + ASN ranges)..."
+    if [ -f "$OUTPUT_DIR/subdomains/resolved.txt" ]; then
+        dnsx -l "$OUTPUT_DIR/subdomains/resolved.txt" \
+            -a -resp-only -silent 2>/dev/null | sort -u > "$OUT/all_ips.txt"
+    else
+        dig +short "$target" A | sort -u > "$OUT/all_ips.txt"
+    fi
+    [ -f "$OUTPUT_DIR/subdomains/ip_ranges.txt" ] && \
+        cat "$OUTPUT_DIR/subdomains/ip_ranges.txt" >> "$OUT/all_ips.txt"
+    sort -u "$OUT/all_ips.txt" -o "$OUT/all_ips.txt"
+
+    local ipcount=$(wc -l < "$OUT/all_ips.txt")
+    step "Scanning $ipcount unique IPs with naabu..."
+
+    require naabu && naabu -list "$OUT/all_ips.txt" \
+        -p 21,22,23,25,53,69,80,110,111,135,139,143,389,443,445,465,500,587,631,636,873,\
+993,995,1080,1099,1194,1433,1521,1723,2049,2082,2083,2086,2087,2095,2096,2181,\
+2375,2376,3000,3001,3128,3268,3269,3306,3389,3690,4000,4001,4243,4369,4848,\
+5000,5432,5601,5672,5900,5984,6379,6443,7001,7002,7070,7077,7080,7443,7474,\
+8000,8001,8008,8080,8081,8083,8084,8085,8088,8089,8090,8161,8443,8444,8888,\
+9000,9001,9090,9092,9200,9300,9418,9443,10000,11211,15672,25565,27017,28017,\
+50000,50070,50075,61616 \
+        -silent -rate 1000 -o "$OUT/naabu_open.txt" 2>/dev/null
+
+    step "Service/version detection with nmap on confirmed open ports..."
+    if [ -s "$OUT/naabu_open.txt" ]; then
+        awk -F: '{print $1}' "$OUT/naabu_open.txt" | sort -u > "$OUT/ips_with_open.txt"
+        local open_ports
+        open_ports=$(awk -F: '{print $2}' "$OUT/naabu_open.txt" | sort -un | tr '\n' ',' | sed 's/,$//')
+        require nmap && nmap -Pn -sV -sC \
+            -p "$open_ports" \
+            -iL "$OUT/ips_with_open.txt" \
+            --open --min-rate 1000 \
+            -oN "$OUT/nmap_services.txt" 2>/dev/null
+    fi
+
+    step "HTTP probe on non-standard ports..."
+    cat "$OUT/naabu_open.txt" 2>/dev/null | httpx \
+        -title -status-code -tech-detect \
+        -threads "$THREADS" -silent \
+        -o "$OUT/nonstandard_http.txt" 2>/dev/null
+
+    step "Alerting on critical exposures..."
+    declare -A juicy=([9200]="Elasticsearch" [6379]="Redis" [27017]="MongoDB"
+                      [5984]="CouchDB" [9092]="Kafka" [2375]="Docker-unauthenticated"
+                      [5601]="Kibana" [7474]="Neo4j" [4369]="RabbitMQ"
+                      [11211]="Memcached" [50070]="Hadoop" [2181]="Zookeeper")
+    for port in "${!juicy[@]}"; do
+        grep -q ":$port$" "$OUT/naabu_open.txt" 2>/dev/null && {
+            alert "EXPOSED: ${juicy[$port]} on port $port!"
+            notify "CRITICAL: ${juicy[$port]} exposed (port $port) at $target!"
+        }
+    done
+
+    success "Port scan done. Check $OUT/"
+}
+
+
+# ════════════════════════════════════════════════════════════
+#  8. URL HARVESTING
+# ════════════════════════════════════════════════════════════
+url_harvest(){
+    printf "\n" && info "URL Harvesting for ${RED}$target${RST}"
+    local OUT="$OUTPUT_DIR/urls"
+
+    step "Historical URLs via gau (wayback + commoncrawl + otx)..."
+    require gau && echo "$target" | gau \
+        --subs --threads "$THREADS" \
+        --o "$OUT/gau_urls.txt" 2>/dev/null
+
+    require waybackurls && echo "$target" | waybackurls \
+        > "$OUT/wayback_urls.txt" 2>/dev/null
+
+    step "Active crawl with katana (JS-rendering)..."
+    require katana && katana -u "https://$target" \
+        -jc -fx -kf all -d 5 \
+        -silent -threads "$THREADS" \
+        -o "$OUT/katana_urls.txt" 2>/dev/null
+
+    step "Merging + dedup with uro..."
+    cat "$OUT/gau_urls.txt" "$OUT/wayback_urls.txt" "$OUT/katana_urls.txt" 2>/dev/null \
+        | sort -u | uro > "$OUT/all_urls.txt" 2>/dev/null
+
+    step "Extracting parameterized URLs..."
+    grep "?" "$OUT/all_urls.txt" 2>/dev/null \
+        | sed 's/=.*/=/' | sort -u > "$OUT/param_urls.txt"
+
+    step "Hunting juicy file extensions..."
+    grep -iE "\.(bak|backup|old|orig|config|conf|cfg|env|log|sql|db|sqlite|xml|json|yaml|yml|zip|tar|gz|rar|7z|dump|secret|key|pem|crt|cer|php~|swp|save)$" \
+        "$OUT/all_urls.txt" 2>/dev/null > "$OUT/interesting_extensions.txt"
+    local ext=$(wc -l < "$OUT/interesting_extensions.txt")
+    [ "$ext" -gt 0 ] && {
+        alert "Juicy file extensions found: $ext URLs"
+        notify "Juicy file extensions: $ext URLs at $target"
+    }
+
+    step "Extracting API paths..."
+    grep -iE "/api/|/v[0-9]+/|/rest/|/graphql|/gql" \
+        "$OUT/all_urls.txt" 2>/dev/null | sort -u > "$OUT/api_paths.txt"
+
+    local total=$(wc -l < "$OUT/all_urls.txt")
+    local params=$(wc -l < "$OUT/param_urls.txt")
+    success "Total URLs: $total | With params: $params"
+}
+
+
+# ════════════════════════════════════════════════════════════
+#  9. JAVASCRIPT DEEP ANALYSIS
+#  Edge case: scan HISTORICAL JS from Wayback too — secrets
+#  that were "deleted" months ago are still in archive.
+# ════════════════════════════════════════════════════════════
+javascript(){
+    printf "\n" && info "JavaScript Analysis for ${RED}$target${RST}"
+    local OUT="$OUTPUT_DIR/js"
+    mkdir -p "$OUT/downloads"
+
+    step "Crawling with katana..."
+    require katana && katana -u "https://$target" \
+        -jc -fx -kf all -d 5 -silent \
+        -o "$OUT/katana_urls.txt" 2>/dev/null
+
+    step "Filtering and downloading JS files (excluding vendor/library files)..."
+    grep "\.js$" "$OUT/katana_urls.txt" 2>/dev/null \
+        | grep -v "node_modules\|jquery\|bootstrap\|lodash\|react\.min\|angular\.min\|vendor\|chunk" \
+        | sort -u > "$OUT/js_urls.txt"
+
+    while IFS= read -r url; do
+        local fname
+        fname=$(echo "$url" | md5sum | cut -d' ' -f1)
+        wget -q "$url" -O "$OUT/downloads/${fname}.js" 2>/dev/null
+    done < "$OUT/js_urls.txt"
+
+    step "HISTORICAL JS from Wayback (deleted secrets goldmine)..."
+    grep "\.js$" "$OUTPUT_DIR/urls/wayback_urls.txt" 2>/dev/null \
+        | sort -u | head -50 | while IFS= read -r url; do
+            local fname
+            fname="wayback_$(echo "$url" | md5sum | cut -d' ' -f1)"
+            wget -q "$url" -O "$OUT/downloads/${fname}.js" 2>/dev/null
+        done
+
+    step "LinkFinder — endpoint extraction..."
+    require linkfinder.py && python3 linkfinder.py \
+        -i "https://$target" -d -o cli \
+        > "$OUT/linkfinder_endpoints.txt" 2>/dev/null
+
+    step "SecretFinder — API keys, tokens, passwords..."
+    if require SecretFinder.py; then
+        for f in "$OUT/downloads/"*.js; do
+            [ -f "$f" ] || continue
+            python3 SecretFinder.py -i "$f" -o cli 2>/dev/null >> "$OUT/secrets_raw.txt"
+        done
+        grep -v "^$" "$OUT/secrets_raw.txt" 2>/dev/null | sort -u > "$OUT/secrets.txt"
+    fi
+
+    step "Trufflehog — verified secrets only..."
+    require trufflehog && trufflehog filesystem "$OUT/downloads/" \
+        --only-verified --json 2>/dev/null > "$OUT/trufflehog.json"
+
+    step "Nuclei — JS exposure templates..."
+    require nuclei && nuclei -l "$OUT/js_urls.txt" \
+        -t "$NUCLEI_TEMPLATES/http/exposures/" \
+        -silent -o "$OUT/nuclei_exposures.txt" 2>/dev/null
+
+    local secrets=$(wc -l < "$OUT/secrets.txt" 2>/dev/null || echo 0)
+    [ "$secrets" -gt 0 ] && {
+        alert "Potential secrets: $secrets entries in $OUT/secrets.txt"
+        notify "JS secrets found! $secrets at $target"
+    }
+
+    success "JS analysis done."
+}
+
+
+# ════════════════════════════════════════════════════════════
+#  10. DIRECTORY BRUTEFORCE
+# ════════════════════════════════════════════════════════════
+dir_bruteforce(){
+    printf "\n" && info "Directory Bruteforce for ${RED}$target${RST}"
+    local OUT="$OUTPUT_DIR/urls"
+
+    step "ffuf (fast, with auto-calibration)..."
+    require ffuf && ffuf -u "https://$target/FUZZ" \
+        -w "$WORDLIST" \
+        -mc 200,201,204,301,302,307,401,403 -fc 404 -ac \
+        -t "$THREADS" -rate "$RATE_LIMIT" \
+        -o "$OUT/ffuf.json" -of json -s 2>/dev/null
+
+    step "feroxbuster (recursive depth-3)..."
+    require feroxbuster && feroxbuster \
+        --url "https://$target" \
+        --wordlist "$WORDLIST" \
+        --threads "$THREADS" --rate-limit "$RATE_LIMIT" \
+        --filter-status 404 --depth 3 \
+        --silent --output "$OUT/feroxbuster.txt" 2>/dev/null
+
+    step "API-specific wordlist (endpoints other hunters miss)..."
+    require ffuf && ffuf -u "https://$target/FUZZ" \
+        -w "$API_WORDLIST" \
+        -mc 200,201,204,301,302,307,401,403 -fc 404 -ac \
+        -t "$THREADS" -rate "$RATE_LIMIT" \
+        -o "$OUT/ffuf_api.json" -of json -s 2>/dev/null
+
+    step "Parallel dirsearch on top 20 live subdomains..."
+    if [ -f "$OUTPUT_DIR/subdomains/live_hosts.txt" ]; then
+        awk '{print $1}' "$OUTPUT_DIR/subdomains/live_hosts.txt" | head -20 | \
+        xargs -P 5 -I{} sh -c \
+            "dirsearch -u {} -w $WORDLIST -x 404,429,500 -q 2>/dev/null >> $OUT/dirsearch_subs.txt"
+    fi
+
+    success "Dir bruteforce done."
+}
+
+
+# ════════════════════════════════════════════════════════════
+#  11. PARAMETER DISCOVERY
+# ════════════════════════════════════════════════════════════
+param_discover(){
+    printf "\n" && info "Parameter Discovery for ${RED}$target${RST}"
+    local OUT="$OUTPUT_DIR/params"
+
+    step "paramspider..."
+    require paramspider && python3 paramspider.py \
+        --domain "$target" \
+        --output "$OUT/paramspider.txt" 2>/dev/null
+
+    step "x8 — hidden parameter bruteforce on top endpoints..."
+    if require x8 && [ -f "$OUTPUT_DIR/urls/param_urls.txt" ]; then
+        head -30 "$OUTPUT_DIR/urls/param_urls.txt" | while IFS= read -r url; do
+            x8 -u "$url" -w /path/to/params_wordlist.txt \
+               --output-format=url 2>/dev/null >> "$OUT/x8_params.txt"
+        done
+    fi
+
+    step "Parameter frequency analysis (most common params across all URLs)..."
+    cat "$OUTPUT_DIR/urls/all_urls.txt" 2>/dev/null \
+        | grep "?" \
+        | grep -oP '(?<=\?|&)[^=&]+' \
+        | sort | uniq -c | sort -rn \
+        > "$OUT/param_frequency.txt"
+
+    step "Extracting potential params from JS files..."
+    grep -ohP "['\"][a-zA-Z_][a-zA-Z0-9_\-]{2,30}['\"]" \
+        "$OUTPUT_DIR/js/downloads/"*.js 2>/dev/null \
+        | tr -d "'\"\`" | sort -u > "$OUT/js_params.txt"
+
+    success "Parameter discovery done."
+}
+
+
+# ════════════════════════════════════════════════════════════
+#  12. GF PATTERNS — INSTANT VULN SIGNAL FROM URL LIST
+#  Edge case: run gf on your collected URLs to instantly
+#  surface XSS, SQLi, SSRF, LFI, IDOR, SSTI candidate URLs.
+#  This is the fastest triage step before manual testing.
+# ════════════════════════════════════════════════════════════
+gf_patterns(){
+    printf "\n" && info "GF Pattern Matching on all collected URLs"
+    local OUT="$OUTPUT_DIR/patterns"
+    local URLS="$OUTPUT_DIR/urls/all_urls.txt"
+
+    require gf || return 1
+    [ ! -f "$URLS" ] && warn "Run -url first." && return 1
+
+    local patterns=("xss" "sqli" "ssrf" "redirect" "lfi" "rce" "idor" "ssti"
+                    "debug_logic" "cors" "upload-fields" "interestingparams" "img-traversal")
+
+    for pattern in "${patterns[@]}"; do
+        local result
+        result=$(cat "$URLS" | gf "$pattern" 2>/dev/null)
+        if [ -n "$result" ]; then
+            echo "$result" > "$OUT/gf_${pattern}.txt"
+            local count=$(echo "$result" | wc -l)
+            step "gf $pattern → $count candidate URLs"
+            case "$pattern" in
+                ssrf|rce) [ "$count" -gt 0 ] && notify "HIGH: gf $pattern found $count candidates!" ;;
+            esac
+        fi
+    done
+
+    step "Compiling summary..."
+    echo "## GF Pattern Summary" > "$OUT/gf_summary.txt"
+    for f in "$OUT"/gf_*.txt; do
+        local name count
+        name=$(basename "$f" .txt | sed 's/gf_//')
+        count=$(wc -l < "$f")
+        echo "- $name: $count URLs" >> "$OUT/gf_summary.txt"
+    done
+    cat "$OUT/gf_summary.txt"
+
+    success "GF patterns done. Investigate $OUT/gf_*.txt"
+}
+
+
+# ════════════════════════════════════════════════════════════
+#  13. CORS MISCONFIGURATION
+#  Edge case: CORS on API subdomains is extremely common
+#  and consistently pays. Null origin bypass is often missed.
+# ════════════════════════════════════════════════════════════
+cors_check(){
+    printf "\n" && info "CORS Misconfiguration Check for ${RED}$target${RST}"
+    local OUT="$OUTPUT_DIR/cors"
+    local LIVE="$OUTPUT_DIR/subdomains/live_hosts.txt"
+
+    step "Running Corsy on live hosts..."
+    if require corsy.py && [ -f "$LIVE" ]; then
+        awk '{print $1}' "$LIVE" | head -50 | while IFS= read -r url; do
+            python3 corsy.py -u "$url" -t 10 2>/dev/null >> "$OUT/corsy_raw.txt"
+        done
+        grep -i "vuln\|misconfiguration\|null\|reflect" "$OUT/corsy_raw.txt" 2>/dev/null \
+            > "$OUT/cors_vulns.txt"
+    fi
+
+    step "Manual reflect + credentials check..."
+    [ -f "$LIVE" ] && awk '{print $1}' "$LIVE" | head -30 | while IFS= read -r url; do
+        # Reflected origin with credentials
+        resp=$(curl -s -I -H "Origin: https://evil.com" "$url" 2>/dev/null)
+        if echo "$resp" | grep -qi "access-control-allow-origin: https://evil.com"; then
+            if echo "$resp" | grep -qi "access-control-allow-credentials: true"; then
+                alert "CORS+CREDENTIALS at $url — HIGH severity!"
+                echo "CORS_CRED: $url" >> "$OUT/cors_vulns.txt"
+                notify "CORS + credentials at $url!"
+            else
+                echo "CORS_REFLECT: $url" >> "$OUT/cors_vulns.txt"
+            fi
+        fi
+
+        # Null origin bypass
+        resp2=$(curl -s -I -H "Origin: null" "$url" 2>/dev/null)
+        echo "$resp2" | grep -qi "access-control-allow-origin: null" && {
+            alert "NULL origin CORS bypass at $url!"
+            echo "CORS_NULL: $url" >> "$OUT/cors_vulns.txt"
+            notify "Null origin CORS bypass at $url!"
+        }
+
+        # Subdomain origin bypass (trusts *.target.com — attacker controls a subdomain = win)
+        resp3=$(curl -s -I -H "Origin: https://evil.$target" "$url" 2>/dev/null)
+        echo "$resp3" | grep -qi "access-control-allow-origin: https://evil.$target" && {
+            alert "Subdomain CORS bypass at $url — if you have XSS on any subdomain this is critical!"
+            echo "CORS_SUBDOMAIN: $url" >> "$OUT/cors_vulns.txt"
+        }
+    done
+
+    local vulns=$(wc -l < "$OUT/cors_vulns.txt" 2>/dev/null || echo 0)
+    [ "$vulns" -gt 0 ] && alert "CORS vulns: $vulns"
+    success "CORS check done."
+}
+
+
+# ════════════════════════════════════════════════════════════
+#  14. 403 BYPASS
+#  Edge case: a 403 is an invitation, not a dead end.
+#  Header tricks + path normalization bypass it constantly.
+# ════════════════════════════════════════════════════════════
+bypass_403(){
+    printf "\n" && info "403 Bypass Attempts for ${RED}$target${RST}"
+    local OUT="$OUTPUT_DIR/vulns"
+
+    # Build a 403 URL list
+    jq -r '.results[]? | select(.status==403) | .url' \
+        "$OUTPUT_DIR/urls/ffuf.json" 2>/dev/null > "$OUT/403_urls.txt"
+
+    # If empty, try common paths
+    [ ! -s "$OUT/403_urls.txt" ] && {
+        for path in admin administrator manager control panel dashboard backend api/v1/admin; do
+            echo "https://$target/$path" >> "$OUT/403_urls.txt"
+        done
+    }
+
+    step "Running bypass-403 tool..."
+    require bypass-403 && while IFS= read -r url; do
+        bypass-403 -u "$url" 2>/dev/null >> "$OUT/403_bypasses.txt"
+    done < "$OUT/403_urls.txt"
+
+    step "Header-based bypass attempts..."
+    local bypass_headers=("X-Original-URL" "X-Rewrite-URL" "X-Custom-IP-Authorization"
+                          "X-Forwarded-For" "X-Real-IP" "X-Originating-IP"
+                          "X-Forwarded-Host" "X-Host" "X-Remote-IP" "X-Client-IP")
+
+    while IFS= read -r url; do
+        for header in "${bypass_headers[@]}"; do
+            local code
+            code=$(curl -s -o /dev/null -w "%{http_code}" \
+                -H "$header: 127.0.0.1" "$url" 2>/dev/null)
+            [ "$code" = "200" ] && {
+                alert "403 BYPASS via $header at $url!"
+                echo "HEADER_BYPASS [$header=127.0.0.1] → $url" >> "$OUT/403_bypasses.txt"
+                notify "403 bypass via $header at $url!"
+            }
+        done
+
+        step "Path normalization bypasses on $url..."
+        for variant in \
+            "${url}/" "${url}/./" "${url}/..;/" \
+            "${url}%20" "${url}%09" "${url}%00" \
+            "${url}#" "${url}?" "${url}/*" \
+            "$(echo "$url" | sed 's|/\([^/]*\)$|/\U\1|g')" \
+            "$(echo "$url" | sed 's|/\([^/]*\)$|/%2f\1|g')"; do
+            local code
+            code=$(curl -s -o /dev/null -w "%{http_code}" "$variant" 2>/dev/null)
+            [ "$code" = "200" ] && {
+                alert "403 PATH BYPASS: $variant"
+                echo "PATH_BYPASS → $variant" >> "$OUT/403_bypasses.txt"
+                notify "403 path bypass: $variant"
+            }
+        done
+    done < "$OUT/403_urls.txt"
+
+    success "403 bypass done. Check $OUT/403_bypasses.txt"
+}
+
+
+# ════════════════════════════════════════════════════════════
+#  15. SHODAN INTELLIGENCE
+#  Edge case: Shodan sees things DNS doesn't.
+#  Old services, SSL certs pointing to internal domains,
+#  same app running somewhere without a WAF.
+# ════════════════════════════════════════════════════════════
+shodan_intel(){
+    printf "\n" && info "Shodan Intelligence for ${RED}$target${RST}"
+    local OUT="$OUTPUT_DIR/ports"
+
+    [ -z "$SHODAN_API_KEY" ] && warn "Set SHODAN_API_KEY in config." && return 1
+    require shodan || return 1
+
+    step "Org search..."
+    shodan search --fields ip_str,port,hostnames,org,os \
+        "org:\"$target\"" 2>/dev/null | head -100 > "$OUT/shodan_org.txt"
+
+    step "SSL cert CN search (finds internal domain names)..."
+    shodan search --fields ip_str,port,ssl.cert.subject.cn \
+        "ssl.cert.subject.cn:\"$target\"" 2>/dev/null > "$OUT/shodan_ssl.txt"
+
+    step "SAN search (Subject Alternative Names reveal internal infra)..."
+    shodan search --fields ip_str,port,ssl.cert.extensions.subjectAltName \
+        "ssl.cert.extensions.subjectAltName:\"$target\"" 2>/dev/null > "$OUT/shodan_san.txt"
+
+    step "Historical host data on main IP..."
+    local main_ip
+    main_ip=$(dig +short "$target" A | head -1)
+    [ -n "$main_ip" ] && shodan host "$main_ip" 2>/dev/null > "$OUT/shodan_host.txt"
+
+    step "Favicon hash search (if computed)..."
+    if [ -f "$OUTPUT_DIR/waf/favicon.txt" ]; then
+        local fhash
+        fhash=$(grep "mmh3 hash" "$OUTPUT_DIR/waf/favicon.txt" | grep -oP '\-?[0-9]+')
+        [ -n "$fhash" ] && {
+            step "Searching Shodan for favicon hash: $fhash..."
+            shodan search --fields ip_str,port,hostnames \
+                "http.favicon.hash:$fhash" 2>/dev/null > "$OUT/shodan_favicon.txt"
+            local fi_count=$(wc -l < "$OUT/shodan_favicon.txt")
+            [ "$fi_count" -gt 1 ] && alert "Found $fi_count instances of this app on Shodan via favicon hash!"
+        }
+    fi
+
+    success "Shodan done. Check $OUT/shodan_*.txt"
+}
+
+
+# ════════════════════════════════════════════════════════════
+#  16. SUBDOMAIN TAKEOVER
+# ════════════════════════════════════════════════════════════
+takeover_check(){
+    printf "\n" && info "Subdomain Takeover Check for ${RED}$target${RST}"
+    local OUT="$OUTPUT_DIR/vulns"
+    local SUBS="$OUTPUT_DIR/subdomains/resolved.txt"
+
+    [ ! -f "$SUBS" ] && warn "Run -sb first." && return 1
+
+    require subzy && subzy run \
+        --targets "$SUBS" --concurrency "$THREADS" \
+        --output "$OUT/subzy.txt" 2>/dev/null
+
+    require nuclei && nuclei -l "$SUBS" \
+        -t "$NUCLEI_TEMPLATES/http/takeovers/" \
+        -silent -o "$OUT/nuclei_takeovers.txt" 2>/dev/null
+
+    local found=$(grep -c "VULNERABLE\|vulnerable" "$OUT/subzy.txt" 2>/dev/null || echo 0)
+    [ "$found" -gt 0 ] && {
+        alert "Takeover vulnerable: $found"
+        notify "SUBDOMAIN TAKEOVER! $found vulnerable at $target"
+    }
+
+    success "Takeover check done."
+}
+
+
+# ════════════════════════════════════════════════════════════
+#  17. VULNERABILITY SCAN (NUCLEI — 3 STAGES)
+# ════════════════════════════════════════════════════════════
+vuln_scan(){
+    printf "\n" && info "Nuclei Vulnerability Scan for ${RED}$target${RST}"
+    local OUT="$OUTPUT_DIR/vulns"
+    local LIVE="$OUTPUT_DIR/subdomains/live_hosts.txt"
+
+    [ ! -f "$LIVE" ] && warn "Run -sb first." && return 1
+    require nuclei || return 1
+
+    step "Stage 1: Broad sweep (exposures + misconfigs + vulns + default-logins)..."
+    nuclei -l "$LIVE" \
+        -t "$NUCLEI_TEMPLATES/http/exposures/," \
+        -t "$NUCLEI_TEMPLATES/http/misconfiguration/," \
+        -t "$NUCLEI_TEMPLATES/http/vulnerabilities/," \
+        -t "$NUCLEI_TEMPLATES/http/default-logins/" \
+        -severity critical,high,medium \
+        -rate-limit "$RATE_LIMIT" -c "$THREADS" \
+        -silent -o "$OUT/nuclei_sweep.txt" 2>/dev/null
+
+    step "Stage 2: CVE templates..."
+    nuclei -l "$LIVE" \
+        -t "$NUCLEI_TEMPLATES/http/cves/" \
+        -severity critical,high \
+        -rate-limit "$RATE_LIMIT" -c "$THREADS" \
+        -silent -o "$OUT/nuclei_cves.txt" 2>/dev/null
+
+    step "Stage 3: DAST fuzzing on parameterized URLs..."
+    if [ -f "$OUTPUT_DIR/urls/param_urls.txt" ]; then
+        nuclei -l "$OUTPUT_DIR/urls/param_urls.txt" \
+            -t "$NUCLEI_TEMPLATES/dast/" \
+            -rate-limit 20 -silent \
+            -o "$OUT/nuclei_dast.txt" 2>/dev/null
+    fi
+
+    local findings=$(cat "$OUT"/nuclei_*.txt 2>/dev/null | wc -l)
+    [ "$findings" -gt 0 ] && {
+        alert "Total nuclei findings: $findings"
+        notify "Nuclei found $findings issues at $target!"
+    }
+
+    success "Nuclei done."
+}
+
+
+# ════════════════════════════════════════════════════════════
+#  18. CLOUD ENUM + GIT LEAKS
+# ════════════════════════════════════════════════════════════
+cloud_enum(){
+    printf "\n" && info "Cloud Enumeration & Git Leaks for ${RED}$target${RST}"
+    local OUT="$OUTPUT_DIR/cloud"
+    local base="${target%%.*}"
+
+    local keywords="$base ${base}-dev ${base}-prod ${base}-staging \
+${base}-internal ${base}-backup ${base}-api ${base}-data \
+${base}-assets ${base}-media ${base}-static ${base}-uploads \
+${base}-logs ${base}-config ${base}-infra ${base}-private"
+
+    step "Cloud bucket enumeration (S3 + GCP + Azure)..."
+    if require cloud_enum.py; then
+        for kw in $keywords; do
+            python3 cloud_enum.py -k "$kw" 2>/dev/null >> "$OUT/cloud_raw.txt"
+        done
+        grep -i "open\|public\|found\|exists" "$OUT/cloud_raw.txt" \
+            > "$OUT/cloud_interesting.txt" 2>/dev/null
+        local open_buckets=$(wc -l < "$OUT/cloud_interesting.txt" 2>/dev/null || echo 0)
+        [ "$open_buckets" -gt 0 ] && {
+            alert "Open/interesting cloud storage: $open_buckets"
+            notify "Open cloud buckets: $open_buckets at $target!"
+        }
+    fi
+
+    step "GitHub org secret scan (trufflehog verified-only)..."
+    if require trufflehog; then
+        trufflehog github --org="$base" \
+            --only-verified --json 2>/dev/null > "$OUT/github_secrets.json"
+        local gs=$(wc -l < "$OUT/github_secrets.json" 2>/dev/null || echo 0)
+        [ "$gs" -gt 0 ] && {
+            alert "Verified GitHub secrets: $gs"
+            notify "GitHub secrets found for org $base!"
+        }
+    fi
+
+    step "GitHub code search dorks..."
+    if [ -n "$GITHUB_TOKEN" ] && require gh; then
+        for query in \
+            "\"$target\" password" "\"$target\" api_key" \
+            "\"$target\" secret" "\"$target\" token" \
+            "\"$target\" db_password" "\"$target\" aws_secret" \
+            "\"$target\" PRIVATE KEY"; do
+            echo "=== $query ===" >> "$OUT/github_dorks.txt"
+            GH_TOKEN="$GITHUB_TOKEN" gh search code "$query" \
+                --limit 10 --json repository,path,url \
+                2>/dev/null >> "$OUT/github_dorks.txt"
+        done
+    fi
+
+    step "Wayback + historical JS secrets scan..."
+    require trufflehog && trufflehog filesystem "$OUTPUT_DIR/js/downloads/" \
+        --only-verified --json 2>/dev/null > "$OUT/wayback_secrets.json"
+
+    success "Cloud enum done. Check $OUT/"
+}
+
+
+# ════════════════════════════════════════════════════════════
+#  19. LOGIN / INTERESTING PANEL DETECTOR (UPGRADED)
+# ════════════════════════════════════════════════════════════
+check(){
+    printf "\n" && info "Detecting Interesting Panels..."
+    local OUT="$OUTPUT_DIR/urls"
+    local LIVE="$OUTPUT_DIR/subdomains/live_hosts.txt"
+    [ -f "$LIVE" ] && awk '{print $1}' "$LIVE" > check.txt
+    [ ! -f "check.txt" ] && warn "Provide check.txt or run -sb first." && return 1
+
+    python3 - <<PYEOF
+import requests, re
+from concurrent.futures import ThreadPoolExecutor
+import urllib3; urllib3.disable_warnings()
+
+with open('check.txt') as f:
+    hosts = [l.strip() for l in f if l.strip()]
+
+PATTERNS = {
+    'login/auth':     r'(?i)login|sign.?in|authenticate|oauth|sso|saml',
+    'admin panel':    r'(?i)admin|administrator|manager|control.?panel|\bcp\b',
+    'dashboard':      r'(?i)dashboard|console|portal|backstage|cockpit',
+    'api explorer':   r'(?i)swagger|api.?docs|graphiql|graphql|openapi|redoc|rapidoc',
+    'dev/staging':    r'(?i)\bdev\b|\bstaging\b|\btest\b|\bqa\b|\buat\b|debug',
+    'CI/CD':          r'(?i)jenkins|travis|gitlab|circleci|drone|buildkite|teamcity',
+    'monitoring':     r'(?i)grafana|kibana|prometheus|datadog|splunk|elk|graylog',
+    'database UI':    r'(?i)phpmyadmin|adminer|pgadmin|mongo.?express|rockmongo',
+    'secret mgmt':    r'(?i)vault|consul|keycloak|authelia|authentik',
+    'file manager':   r'(?i)filebrowser|filemanager|elfinder|webdav',
+    'git interface':  r'(?i)gitea|gogs|gitlab|sourcegraph|gitweb',
+}
+
+found = []
+
+def process(host):
+    for scheme in ['https', 'http']:
+        try:
+            r = requests.get(f"{scheme}://{host.rstrip('/')}", timeout=8,
+                             allow_redirects=True, verify=False)
+            src = r.text + r.url
+            for label, pat in PATTERNS.items():
+                if re.search(pat, src):
+                    print(f"\033[1;31m[{r.status_code}]\033[0m \033[92m{host}\033[0m → \033[1;36m{label}\033[0m")
+                    found.append(f"{label}: {host}")
+                    return
+            break
+        except: continue
+
+with ThreadPoolExecutor(20) as ex:
+    ex.map(process, hosts)
+
+if found:
+    open('${OUT}/interesting_panels.txt', 'w').write('\n'.join(set(found)))
+    print(f"\n\033[1;32m[DONE]\033[0m {len(set(found))} panels → ${OUT}/interesting_panels.txt")
+PYEOF
+}
+
+
+# ════════════════════════════════════════════════════════════
+#  20. AI-ASSISTED SCOPE PARSING + RECON TRIAGE
+# ════════════════════════════════════════════════════════════
+ai_assist(){
+    printf "\n" && info "AI-Assisted Analysis (mode: ${1:-scope})"
+    [ -z "$ANTHROPIC_API_KEY" ] && warn "Set ANTHROPIC_API_KEY." && return 1
+    local mode="${1:-scope}"
+
+    if [ "$mode" = "scope" ]; then
+        [ ! -f "program_brief.txt" ] && warn "Create program_brief.txt first." && return 1
+        step "Parsing scope with Claude..."
+        python3 - <<PYEOF
+import os, json, urllib.request
+payload = json.dumps({"model":"claude-sonnet-4-20250514","max_tokens":2000,
+  "messages":[{"role":"user","content":f"""You are an elite bug bounty hunter.
+From this program brief, extract:
+1. IN-SCOPE assets (domains, IPs, apps, APIs, mobile)
+2. OUT-OF-SCOPE (explicitly excluded)
+3. PROHIBITED test types (rate-limit, destructive, social engineering, etc.)
+4. Disclosure deadline and responsible disclosure requirements
+5. Reward tiers — what the program values most, what gets paid best
+6. Tech stack hints from the brief
+7. Red flags / traps to avoid
+8. Recommended first 3 attack surfaces based on scope
+
+Brief:\n{open('program_brief.txt').read()}"""}]}).encode()
+req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=payload,
+    headers={"Content-Type":"application/json",
+             "x-api-key":os.environ["ANTHROPIC_API_KEY"],
+             "anthropic-version":"2023-06-01"})
+with urllib.request.urlopen(req) as r:
+    result = json.loads(r.read())["content"][0]["text"]
+    print("\n"+result)
+    open("scope_sheet.txt","w").write(result)
+    print("\n\033[1;32m[DONE]\033[0m scope_sheet.txt saved")
+PYEOF
+
+    elif [ "$mode" = "triage" ]; then
+        step "AI triage of recon data..."
+        python3 - <<PYEOF
+import os, json, urllib.request
+
+def read(path, limit=3000):
+    try: return open(path).read()[:limit]
+    except: return "not available"
+
+payload = json.dumps({"model":"claude-sonnet-4-20250514","max_tokens":3000,
+  "messages":[{"role":"user","content":f"""You are an expert bug bounty hunter.
+I've completed recon on {os.environ.get('target','')}.
+
+LIVE HOSTS: {read('${OUTPUT_DIR}/subdomains/live_hosts.txt')}
+OPEN PORTS: {read('${OUTPUT_DIR}/ports/naabu_open.txt', 1000)}
+DNS RECORDS: {read('${OUTPUT_DIR}/dns/dns_records.txt', 1000)}
+GF SUMMARY: {read('${OUTPUT_DIR}/patterns/gf_summary.txt', 500)}
+NUCLEI FINDINGS: {read('${OUTPUT_DIR}/vulns/nuclei_sweep.txt', 1000)}
+
+Give me:
+1. Top 5 attack surfaces to test first — with exact reasoning
+2. For each — specific vuln class, exact test steps, tools to use
+3. Patterns suggesting weak spots (multi-tenancy? old APIs? acquisitions?)
+4. What I'm probably missing that's NOT obvious from this data
+5. Estimated time allocation per area"""}]}).encode()
+
+req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=payload,
+    headers={"Content-Type":"application/json",
+             "x-api-key":os.environ["ANTHROPIC_API_KEY"],
+             "anthropic-version":"2023-06-01"})
+with urllib.request.urlopen(req) as r:
+    result = json.loads(r.read())["content"][0]["text"]
+    print("\n"+result)
+    open("${OUTPUT_DIR}/report/ai_triage.txt","w").write(result)
+    print("\n\033[1;32m[DONE]\033[0m AI triage → ${OUTPUT_DIR}/report/ai_triage.txt")
+PYEOF
+    fi
+}
+
+
+# ════════════════════════════════════════════════════════════
+#  21. REPORT GENERATION
+# ════════════════════════════════════════════════════════════
+generate_report(){
+    printf "\n" && info "Generating Recon Report..."
+    local R="$OUTPUT_DIR/report/recon_report.md"
+
+    local total_subs=$(wc -l < "$OUTPUT_DIR/subdomains/all_subs_raw.txt" 2>/dev/null || echo "N/A")
+    local live=$(wc -l < "$OUTPUT_DIR/subdomains/live_hosts.txt" 2>/dev/null || echo "N/A")
+    local urls=$(wc -l < "$OUTPUT_DIR/urls/all_urls.txt" 2>/dev/null || echo "N/A")
+    local open_ports=$(wc -l < "$OUTPUT_DIR/ports/naabu_open.txt" 2>/dev/null || echo "N/A")
+    local nuclei=$(cat "$OUTPUT_DIR/vulns/nuclei_sweep.txt" "$OUTPUT_DIR/vulns/nuclei_cves.txt" 2>/dev/null | wc -l)
+    local takeovers=$(grep -c "VULNERABLE\|vulnerable" "$OUTPUT_DIR/vulns/subzy.txt" 2>/dev/null || echo 0)
+    local cors=$(wc -l < "$OUTPUT_DIR/cors/cors_vulns.txt" 2>/dev/null || echo 0)
+    local secrets=$(wc -l < "$OUTPUT_DIR/js/secrets.txt" 2>/dev/null || echo 0)
+    local bypasses=$(wc -l < "$OUTPUT_DIR/vulns/403_bypasses.txt" 2>/dev/null || echo 0)
+    local cloud=$(wc -l < "$OUTPUT_DIR/cloud/cloud_interesting.txt" 2>/dev/null || echo 0)
+
+    cat > "$R" <<REPORT
+# Recon Report — $target
+**Date:** $(date)
+
+---
+
+## Stats
+| Metric | Count |
+|---|---|
+| Subdomains found | $total_subs |
+| Live hosts | $live |
+| URLs harvested | $urls |
+| Open ports | $open_ports |
+
+## Findings
+| Category | Count |
+|---|---|
+| Nuclei findings | $nuclei |
+| Subdomain takeovers | $takeovers |
+| CORS misconfigurations | $cors |
+| JS/Git secrets | $secrets |
+| 403 bypasses | $bypasses |
+| Open cloud buckets | $cloud |
+
+---
+
+## Live Hosts (top 30)
+\`\`\`
+$(head -30 "$OUTPUT_DIR/subdomains/live_hosts.txt" 2>/dev/null)
+\`\`\`
+
+## Critical/High Nuclei Findings
+\`\`\`
+$(grep -E "\[critical\]|\[high\]" "$OUTPUT_DIR/vulns/nuclei_sweep.txt" "$OUTPUT_DIR/vulns/nuclei_cves.txt" 2>/dev/null | head -20 || echo "none")
+\`\`\`
+
+## Interesting Panels
+\`\`\`
+$(cat "$OUTPUT_DIR/urls/interesting_panels.txt" 2>/dev/null || echo "none")
+\`\`\`
+
+## GF Pattern Candidates
+$(cat "$OUTPUT_DIR/patterns/gf_summary.txt" 2>/dev/null || echo "run -gf first")
+
+## Email Security Issues
+\`\`\`
+$(cat "$OUTPUT_DIR/dns/email_issues.txt" 2>/dev/null || echo "none")
+\`\`\`
+
+## DNS Anomalies
+\`\`\`
+$(cat "$OUTPUT_DIR/dns/dangling_cnames.txt" 2>/dev/null | head -10 || echo "none")
+\`\`\`
+
+---
+
+## Next Steps Checklist
+- [ ] Manually investigate all critical/high nuclei findings
+- [ ] Test all gf pattern URLs for actual vulnerabilities
+- [ ] Test CORS vulns with an authenticated session
+- [ ] Check 403 bypasses manually — confirm access
+- [ ] Test interesting panels for default creds / logic flaws
+- [ ] Verify subdomain takeover candidates
+- [ ] Review all secrets and validate they work
+- [ ] Run AI triage: ./approach.sh -triage $target
+
+---
+*Generated by approach.sh v3.0 | $(date)*
+REPORT
+
+    success "Report → $R"
+    echo ""
+    echo -e "  ${GRN}Output summary:${RST}"
+    echo -e "  Subdomains    → $OUTPUT_DIR/subdomains/"
+    echo -e "  Live Hosts    → $OUTPUT_DIR/subdomains/live_hosts.txt"
+    echo -e "  URLs + Params → $OUTPUT_DIR/urls/"
+    echo -e "  GF Patterns   → $OUTPUT_DIR/patterns/gf_*.txt"
+    echo -e "  JS Secrets    → $OUTPUT_DIR/js/secrets.txt"
+    echo -e "  Ports         → $OUTPUT_DIR/ports/"
+    echo -e "  CORS Vulns    → $OUTPUT_DIR/cors/cors_vulns.txt"
+    echo -e "  403 Bypasses  → $OUTPUT_DIR/vulns/403_bypasses.txt"
+    echo -e "  Takeovers     → $OUTPUT_DIR/vulns/subzy.txt"
+    echo -e "  Nuclei        → $OUTPUT_DIR/vulns/"
+    echo -e "  Cloud/Leaks   → $OUTPUT_DIR/cloud/"
+    echo -e "  DNS Analysis  → $OUTPUT_DIR/dns/"
+    echo -e "  WAF/Headers   → $OUTPUT_DIR/waf/"
+    echo -e "  Report        → $OUTPUT_DIR/report/recon_report.md"
+}
+
+
+# ════════════════════════════════════════════════════════════
+#  22. FULL AUTO PIPELINE
+# ════════════════════════════════════════════════════════════
+full_auto(){
+    printf "\n" && alert "FULL AUTO PIPELINE — $target"
+    warn "Ensure you have EXPLICIT AUTHORIZATION before running this."
+    read -rp "Type 'yes' to confirm: " confirm
+    [ "$confirm" != "yes" ] && echo "Aborted." && exit 1
+
+    setup_output
+    asn_enum
+    reverse_whois
+    subdomain_enum
+    permutation_enum
+    dns_analysis
+    waf_detect
+    port_scan
+    url_harvest
+    javascript
+    dir_bruteforce
+    param_discover
+    gf_patterns
+    cors_check
+    bypass_403
+    takeover_check
+    vuln_scan
+    cloud_enum
+    check
+    [ -n "$ANTHROPIC_API_KEY" ] && ai_assist triage
+    generate_report
+}
+
+
+# ════════════════════════════════════════════════════════════
+#  FRESH UP — UPDATE ALL TOOLS
+# ════════════════════════════════════════════════════════════
+fresh_up(){
+    printf "\n" && info "Updating system and all tools..."
+    apt update && apt upgrade -y && apt clean 2>/dev/null
+    for tool in \
+        "github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest" \
+        "github.com/projectdiscovery/httpx/cmd/httpx@latest" \
+        "github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest" \
+        "github.com/projectdiscovery/naabu/v2/cmd/naabu@latest" \
+        "github.com/projectdiscovery/katana/cmd/katana@latest" \
+        "github.com/projectdiscovery/dnsx/cmd/dnsx@latest" \
+        "github.com/projectdiscovery/chaos-client/cmd/chaos@latest" \
+        "github.com/projectdiscovery/alterx/cmd/alterx@latest" \
+        "github.com/lc/gau/v2/cmd/gau@latest" \
+        "github.com/tomnomnom/waybackurls@latest" \
+        "github.com/tomnomnom/assetfinder@latest" \
+        "github.com/tomnomnom/gf@latest" \
+        "github.com/ameenmaali/uro@latest" \
+        "github.com/LukaSikic/subzy@latest"; do
+        step "Updating $(basename "$tool" | cut -d@ -f1)..."
+        go install "$tool" 2>/dev/null
+    done
+    nuclei -update-templates 2>/dev/null
+    success "All tools updated."
+}
+
+
+# ─── BANNER + USAGE ──────────────────────────────────────────
+banner
+
 if [ $# -lt 2 ]; then
-    echo "" && echo -e "        Usage: \e[33mapproach [options] <target>\e[0m"
-    printf "\tOptions:\n"
-    echo -e "\t🔎  -sb     Subdomain Enumeration"
-    echo -e "\t📁  -D      Quick Content Discovery"
-    echo -e "\t🚪  -ps     Quick Port Scanning"
-    echo -e "\t🌍  -r      Hosts Resolution"
-    echo -e "\t🔄  -fresh  Total Revamp"
-    echo -e "\t🚀  -js     Slaughter JS-files for Secrets"
-    echo -e "\t🔍  -check  Investigate manual testing approach\n\n"
+    echo -e "  Usage: \e[33m./approach.sh [options] <target>\e[0m"
+    printf "\n  ─── Reconnaissance ───\n"
+    echo -e "\t🔭  -asn     ASN & IP ranges + reverse IP lookup"
+    echo -e "\t🧬  -whois   Reverse WHOIS — find sibling/acquired domains"
+    echo -e "\t🌐  -sb      Subdomain enum (7 sources, parallel, resolve, probe)"
+    echo -e "\t🔀  -perm    Permutation discovery (alterx — finds dev/staging/api-v2)"
+    echo -e "\t🔬  -dns     DNS deep analysis (AXFR, SPF, DMARC, DKIM, wildcards)"
+    echo -e "\t🛡️   -waf     WAF detect + security headers + favicon Shodan hash"
+    echo -e "\t🚪  -ps      Port scan (naabu → nmap, all owned IPs, 60+ ports)"
+    printf "\n  ─── Surface Mapping ───\n"
+    echo -e "\t🌍  -url     URL harvest (gau + wayback + katana + uro)"
+    echo -e "\t🚀  -js      JS analysis (katana + LinkFinder + trufflehog + wayback)"
+    echo -e "\t📁  -D       Dir bruteforce (ffuf + feroxbuster + API wordlist)"
+    echo -e "\t🔬  -param   Param discovery (paramspider + x8 + JS param extraction)"
+    printf "\n  ─── Vulnerability Signals ───\n"
+    echo -e "\t🎯  -gf      GF patterns (xss, sqli, ssrf, lfi, rce, idor, ssti...)"
+    echo -e "\t🌐  -cors    CORS (reflect + null origin + subdomain origin bypass)"
+    echo -e "\t🚧  -403     403 bypass (header tricks + path normalization)"
+    echo -e "\t💀  -tko     Subdomain takeover (subzy + nuclei)"
+    echo -e "\t🧨  -vuln    Nuclei (sweep + CVEs + DAST fuzzing)"
+    printf "\n  ─── Intel & Leaks ───\n"
+    echo -e "\t🔍  -check   Detect login/admin/CI/monitoring/db/git panels"
+    echo -e "\t☁️   -cloud   Cloud buckets + GitHub org secrets + wayback secrets"
+    echo -e "\t🔭  -shodan  Shodan (org + SSL + SAN + favicon hash + history)"
+    echo -e "\t🤖  -ai      AI scope parsing (needs program_brief.txt)"
+    echo -e "\t🧠  -triage  AI triage of all recon output"
+    printf "\n  ─── Meta ───\n"
+    echo -e "\t📊  -report  Generate full markdown recon report"
+    echo -e "\t💣  -full    Full auto pipeline (everything, with authorization check)"
+    echo -e "\t🔄  -fresh   Update all tools via go install"
+    printf "\n"
     exit 1
 fi
 
-
-target="${@: -1}"  # Get the last argument as the target
-
-# Parse flags and options
+target="${@: -1}"
+export target
+OUTPUT_DIR="./recon-${target}-$(date +%Y%m%d-%H%M%S)"
 flags=()
 
 for arg in "${@:1:$#-1}"; do
     case $arg in
-        -sb|-D|-ps|-r|-fresh|-h|-js|-check)
-            flags+=("$arg")
-            ;;
-        *)
-            usage
-            exit 1
-            ;;
+        -asn|-whois|-sb|-perm|-dns|-waf|-ps|-url|-js|-D|-param|\
+        -gf|-cors|-403|-tko|-vuln|-check|-cloud|-shodan|-ai|-triage|\
+        -report|-full|-fresh)
+            flags+=("$arg");;
+        *) echo "Unknown flag: $arg" && exit 1;;
     esac
 done
 
-# Handle the parsed flags and options
+setup_output
+
 for flag in "${flags[@]}"; do
     case $flag in
-        -sb)
-            subdomain_enum
-            ;;
-        -D)
-            dir_bruteforce
-            ;;
-        -ps)
-            port_scan
-            ;;
-        -r)
-            resolve_subdomains
-            ;;
-        -fresh)
-            fresh_up
-            ;;
-        -js)
-            javascript
-            ;;
-        -check)
-            check
-            ;;
+        -asn)    asn_enum ;;
+        -whois)  reverse_whois ;;
+        -sb)     subdomain_enum ;;
+        -perm)   permutation_enum ;;
+        -dns)    dns_analysis ;;
+        -waf)    waf_detect ;;
+        -ps)     port_scan ;;
+        -url)    url_harvest ;;
+        -js)     javascript ;;
+        -D)      dir_bruteforce ;;
+        -param)  param_discover ;;
+        -gf)     gf_patterns ;;
+        -cors)   cors_check ;;
+        -403)    bypass_403 ;;
+        -tko)    takeover_check ;;
+        -vuln)   vuln_scan ;;
+        -check)  check ;;
+        -cloud)  cloud_enum ;;
+        -shodan) shodan_intel ;;
+        -ai)     ai_assist scope ;;
+        -triage) ai_assist triage ;;
+        -report) generate_report ;;
+        -full)   full_auto ;;
+        -fresh)  fresh_up ;;
     esac
 done
-
-# PLEASE READ THIS
-# Hey, I know if you're reading this you're probably reviewing this whole script.
-# I just wanna say that "DON'T use this script as other automation tools", make sure you add some extra unique features.
